@@ -1,0 +1,4 @@
+nocheat
+=======
+
+NoCheat for CanaryMod
