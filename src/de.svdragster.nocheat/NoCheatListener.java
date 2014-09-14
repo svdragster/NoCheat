@@ -601,10 +601,12 @@ public class NoCheatListener implements PluginListener {
 			int mobcount = CountNearbyMobs(player);
 			double temp = hook.getTo().getY() - hook.getFrom().getY();
 			boolean negative = false;
-			if (temp < 0.0D) {
+			if (temp < 0) {
 				negative = true;
 			}
 			double diffy = Math.abs(temp);
+			List<PotionEffect> effects = new ArrayList<PotionEffect>();
+			effects.addAll(player.getAllActivePotionEffects());
 			if ((!Flying.isEmpty()) && (Flying.contains(world))) {
 				if ((diffy < 0.21D) && (diffy > 0.2D) && (!negative)
 						&& (!player.hasPermission("nocheat.admin.exception"))) {
@@ -619,9 +621,7 @@ public class NoCheatListener implements PluginListener {
 						hook.setCanceled();
 					}
 				}
-				if ((diffy >= 0.0D) && (diffy <= 0.1D)
-						&& (!player.getMode().equals(GameMode.CREATIVE))
-						&& (!player.getCapabilities().mayFly()) && (!negative)) {
+				if ((diffy == 0.0D) && (!player.getMode().equals(GameMode.CREATIVE)) && (!player.getCapabilities().mayFly()) && (!negative)) {
 					Block block = player.getWorld().getBlockAt(
 							(int) player.getX(), (int) player.getY() - 1,
 							(int) player.getZ());
@@ -737,34 +737,29 @@ public class NoCheatListener implements PluginListener {
 					}
 				}
 			}
-			if ((!player.getMode().equals(GameMode.CREATIVE))
-					&& (!player.getCapabilities().mayFly())
-					&& (!NoFall.isEmpty()) && (NoFall.contains(world))) {
+			if ((!player.getMode().equals(GameMode.CREATIVE)) && (!player.getCapabilities().mayFly()) && (!NoFall.isEmpty()) && (NoFall.contains(world))) {
 				if (negative) {
 					if (this.fallen.containsKey(player)) {
-						this.fallen.put(player, Integer
-								.valueOf(((Integer) this.fallen.get(player))
-										.intValue() + 1));
+						fallen.put(player, fallen.get(player) + 1);
 					} else {
 						this.fallen.put(player, Integer.valueOf(1));
 					}
 				}
-				if ((this.fallen.containsKey(player))
-						&& (((Integer) this.fallen.get(player)).intValue() > 6)
-						&& (!player
-								.getWorld()
-								.getBlockAt((int) player.getX(),
-										(int) player.getY() - 2,
-										(int) player.getZ()).getType()
-								.equals(BlockType.Air))) {
-					if (this.lastDamageType.containsKey(player)) {
+				NoFallCheck:
+				if ((this.fallen.containsKey(player)) && (((Integer) this.fallen.get(player)).intValue() > 6) && (!player.getWorld().getBlockAt((int) player.getX(), (int) player.getY() - 2, (int) player.getZ()).getType().equals(BlockType.Air))) {
+					for (int i=0; i<effects.size(); i++) {
+						PotionEffect effect = effects.get(i);
+						int id = effect.getPotionID();
+						if (id == 8) {
+							break NoFallCheck;
+						}
+					}
+					if (lastDamageType.containsKey(player)) {
 						new Thread() {
 							public void run() {
 								try {
 									Thread.sleep(100L);
-									if (!((DamageType) NoCheatListener.this.lastDamageType
-											.get(player))
-											.equals(DamageType.FALL)) {
+									if (!(lastDamageType.get(player)).equals(DamageType.FALL)) {
 										castToAdmins(player, "§4[move] NoFall");
 									} else {
 										NoCheatListener.this.lastDamageType
@@ -779,24 +774,27 @@ public class NoCheatListener implements PluginListener {
 					}
 					this.fallen.remove(player);
 				}
-				if (!player
-						.getWorld()
-						.getBlockAt((int) player.getX(),
-								(int) player.getY() - 1, (int) player.getZ())
-						.getType().equals(BlockType.Air)) {
+				if (!player.getWorld().getBlockAt((int) player.getX(), (int) player.getY() - 1, (int) player.getZ()).getType().equals(BlockType.Air)) {
 					this.fallen.remove(player);
 				}
 			}
-			if ((!negative) && (diffy > 0.52D)
-					&& (!player.getMode().equals(GameMode.CREATIVE))
-					&& (!Jump.isEmpty()) && (Jump.contains(world))) {
-				if (this.lastattack.containsKey(player)) {
-					if ((System.currentTimeMillis()
-							- ((Long) this.lastattack.get(player)).longValue() > 3000L)
-							&& (mobcount < 1)) {
+			double maxjump = 0.54;
+			// Increases jump height by about [level]/8+.46 per level. (Jump height is ([level]+4.2)^2/16, ignoring drag). Taken from http://minecraft.gamepedia.com/Status_effect
+			for (int i=0; i<effects.size(); i++) {
+				PotionEffect effect = effects.get(i);
+				int id = effect.getPotionID();
+				if (id == 8) { // Jump boost
+					int amp = effect.getAmplifier(); // amp 0 is level 1 ingame
+					double add = 1 + (0.22*amp);
+					maxjump = maxjump * add;
+				}
+			}
+			if ((!negative) && (diffy > maxjump) && (!player.getMode().equals(GameMode.CREATIVE))	&& (!Jump.isEmpty()) && (Jump.contains(world))) {
+				if (lastattack.containsKey(player)) {
+					if ((System.currentTimeMillis() - lastattack.get(player) > 3000L) && (mobcount < 1)) {
 						hook.setCanceled();
 						addToBan(player, 1);
-						castToAdmins(player, "§4diffy > 0.52");
+						castToAdmins(player, "§4diffy > " + maxjump);
 					}
 				} else {
 					hook.setCanceled();
@@ -894,28 +892,33 @@ public class NoCheatListener implements PluginListener {
 					}
 				}
 			}
-			int number = 0;
+			double number = 225;
 			if (player.isSprinting()) {
-				number = 48;
-			} else {
-				number = 200;
+				number = 100;
+			}
+			for (int i=0; i<effects.size(); i++) {
+				PotionEffect effect = effects.get(i);
+				int id = effect.getPotionID();
+				if (id == 1) { // Speed
+					int amp = effect.getAmplifier(); // amp 0 is level 1 ingame
+					amp = amp + 1;
+					double remove = 1 - (0.2*amp); // Every additional level makes the player 20% faster. 0.2*amp removes 0.2 each level.
+					number = number * remove; // If 'remove' is 0.8 it removes 20% of number;
+					if (number < 0) {
+						number = 0;
+					}
+				}
 			}
 			if ((!Speed.isEmpty()) && (Speed.contains(world))) {
-				if ((result > 2.5D) && (result < number)) {
+				if ((result > 5) && (result < number)) {
 					str = str.concat("§4 (speed) " + result + " < " + number);
-					if ((!negative)
-							&& (!hook.getPlayer().isBlocking())
-							&& (hook.getPlayer().getMode() != GameMode.CREATIVE)
-							&& (!hook.getPlayer().getCapabilities().mayFly())) {
-						if (this.walk.containsKey(player)) {
-							this.walk.put(player, Integer
-									.valueOf(((Integer) this.walk.get(player))
-											.intValue() + 1));
-							if (((Integer) this.walk.get(player)).intValue() > 10) {
+					if ((!negative)	&& (!hook.getPlayer().isBlocking()) && (hook.getPlayer().getMode() != GameMode.CREATIVE) && (!hook.getPlayer().getCapabilities().mayFly())) {
+						if (walk.containsKey(player)) {
+							walk.put(player, walk.get(player) + 1);
+							if (walk.get(player) > 10) {
 								if (this.lastattack.containsKey(player)) {
 									if ((System.currentTimeMillis() - ((Long) this.lastattack.get(player)).longValue() > 5000L) && (mobcount < 1)) {
 										hook.setCanceled();
-										player.message("§4Too fast!!!");
 									}
 								} else {
 									hook.setCanceled();
