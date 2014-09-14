@@ -18,6 +18,7 @@ import net.canarymod.LineTracer;
 import net.canarymod.api.DamageType;
 import net.canarymod.api.GameMode;
 import net.canarymod.api.entity.Arrow;
+import net.canarymod.api.entity.Entity;
 import net.canarymod.api.entity.EntityType;
 import net.canarymod.api.entity.living.EntityLiving;
 import net.canarymod.api.entity.living.humanoid.Player;
@@ -34,6 +35,7 @@ import net.canarymod.chat.Colors;
 import net.canarymod.chat.TextFormat;
 import net.canarymod.hook.HookHandler;
 import net.canarymod.hook.entity.DamageHook;
+import net.canarymod.hook.entity.EntityMoveHook;
 import net.canarymod.hook.entity.EntitySpawnHook;
 import net.canarymod.hook.entity.PotionEffectAppliedHook;
 import net.canarymod.hook.player.BlockDestroyHook;
@@ -49,35 +51,23 @@ import net.canarymod.tasks.ServerTask;
 import net.visualillusionsent.utils.PropertiesFile;
 
 public class NoCheatListener implements PluginListener {
-
-	public static final String PERMISSION_ADMIN =  "nocheat.admin.";
-	public static final String PERMISSION_CHECKFORUPDATES =  "checkforupdates";
-	private static final String USER_AGENT = "canary_minecraft";
+	public static final String PERMISSION_ADMIN = "nocheat.admin.";
+	public static final String PERMISSION_CHECKFORUPDATES = "checkforupdates";
+	//private static final String USER_AGENT = "canary_minecraft";
 	public static final String VERSION = new NoCheat().getVersion();
-	
-	public ServerTask task = new ServerTask(new NoCheat(), AntiForcefieldTime*20*60, true) { // 20 ticks are 1 second, the time set in AntiForcefieldTime is in minutes
-		
-		@Override
+	public ServerTask task = new ServerTask(new NoCheat(),
+			AntiForcefieldTime * 20 * 60, true) {
 		public void run() {
-			AntiForceField(null, AntiForcefieldType);
+			NoCheatListener.this.AntiForceField(null, NoCheatListener.AntiForcefieldType);
 		}
 	};
-	
-	public final static String DIR = "config/nocheat/";
-	public final static String PLAYERS = DIR + "players/";
-	
-	//public static HashMap<Player, EntityLiving> mobs = new HashMap<Player, EntityLiving>();
-	
-	//HashMap<Player, Integer> level = new HashMap<Player, Integer>();
-	
+	public static final String DIR = "config/nocheat/";
+	public static final String PLAYERS = "config/nocheat/players/";
 	public static HashMap<Player, ArrayList<Player>> display = new HashMap<Player, ArrayList<Player>>();
 	public static HashMap<Player, String> displaytype = new HashMap<Player, String>();
-	
 	HashMap<Player, Long> TempBans = new HashMap<Player, Long>();
 	HashMap<Player, String> TempReasons = new HashMap<Player, String>();
-	
 	HashMap<Player, Long> map = new HashMap<Player, Long>();
-	
 	public static List<World> FastBreak = new ArrayList<World>();
 	public static List<World> Nuker = new ArrayList<World>();
 	public static List<World> FastBuild = new ArrayList<World>();
@@ -90,70 +80,126 @@ public class NoCheatListener implements PluginListener {
 	public static List<World> AntiForcefield = new ArrayList<World>();
 	public static int AntiForcefieldType = 1;
 	public static int AntiForcefieldTime = 15;
-	
+	public static String combatAction = "tempban";
+	public static int combatBan = 20;
+	public static String buildAction = "kick";
+	public static int buildBan = 5;
+	public static String movementAction = "kick";
+	public static int movementBan = 5;
+
 	public int random(int numOne, int numTwo) {
-		int RandomNumber = (int) (Math.random()*numOne+numTwo);
+		int RandomNumber = (int) (Math.random() * numOne + numTwo);
 		return RandomNumber;
 	}
-	
+
 	HashMap<Player, Long> slowdown = new HashMap<Player, Long>();
 	HashMap<Player, Integer> amountslowdown = new HashMap<Player, Integer>();
-	
 	HashMap<Player, Integer> walk = new HashMap<Player, Integer>();
-	
 	HashMap<Player, Long> lastattack = new HashMap<Player, Long>();
+
+	public void tempban(Player player, String reason, int minutes) {
+		if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
+			player.kick(Colors.LIGHT_RED + reason + "\n\n" + Colors.RED + "You have been banned for " + Colors.YELLOW + minutes + Colors.RED + " minutes.");
+			TempReasons.put(player, reason);
+			TempBans.put(player, (long) (System.currentTimeMillis() + 1000*60*minutes));
+		} else {
+			player.message(Colors.RED + "You would have been tempbanned: " + reason);
+		}
+	}
 	
-	public void castToAdmins(Player toWatch, String str) {
-		for (Player player : display.keySet()) {
-			if (player.equals(toWatch)) {
-			    ArrayList<Player> admins = new ArrayList<Player>();
-			    admins.addAll(display.get(player));
-			    for (int i=0; i<admins.size(); i++) {
-			    	if (displaytype.containsKey(admins.get(i))) {
-			    		String[] type = displaytype.get(admins.get(i)).toLowerCase().split(",");
-			    		
-			    		adminLoop:
-			    		for (int s=0; s<type.length; s++) {
-			    			String strType = type[s];
-			    			if (strType != null) {
-				    			if (str.toLowerCase().contains(strType)) {
-				    				admins.get(i).message(Colors.ORANGE + "[NoCheat]" + Colors.WHITE + player.getName() + ": " + Colors.LIGHT_RED + str);
-				    				continue adminLoop;
-				    			}
-			    			}
-			    		}
-			    		
-			    	} else {
-			    		admins.get(i).message(Colors.ORANGE + "[NoCheat]" + Colors.WHITE + player.getName() + ": " + Colors.LIGHT_RED + str);
-			    	}
-			    }
+	public void performAction(Player player, String type) {
+		if (type.equalsIgnoreCase("combat")) {
+			if (combatAction.equalsIgnoreCase("tempban")) {
+				tempban(player, "Combat Hacks detected.", combatBan);
+			} else if (combatAction.equalsIgnoreCase("kick")) {
+				player.kick(Colors.RED + "Combat Hacks detected.");
+			} else {
+				alert(player.getName() + Colors.YELLOW + ": Combat Hacks detected.");
+			}
+		} else if (type.equalsIgnoreCase("build")) {
+			if (buildAction.equalsIgnoreCase("tempban")) {
+				tempban(player, "Build Hacks detected.", buildBan);
+			} else if (buildAction.equalsIgnoreCase("kick")) {
+				player.kick(Colors.RED + "Build Hacks detected.");
+			} else {
+				alert(player.getName() + Colors.YELLOW + ": Build Hacks detected.");
+			}
+		} else if (type.equalsIgnoreCase("movement")) {
+			if (movementAction.equalsIgnoreCase("tempban")) {
+				tempban(player, "Movement Hacks detected.", movementBan);
+			} else if (movementAction.equalsIgnoreCase("kick")) {
+				player.kick(Colors.RED + "Movement Hacks detected.");
+			} else {
+				alert(player.getName() + Colors.YELLOW + ": Movement Hacks detected.");
 			}
 		}
 	}
 	
-	public static boolean isNumeric(String str) {  
-		try {  
-			@SuppressWarnings("unused")
-			double d = Double.parseDouble(str);  
-		} catch(NumberFormatException nfe) {  
-			return false;  
-		}  
-		return true;  
+	public void castToAdmins(Player toWatch, String str) {
+		for (Player player : display.keySet()) {
+			if (player.equals(toWatch)) {
+				ArrayList<Player> admins = new ArrayList<Player>();
+				admins.addAll(display.get(player));
+				for (int i = 0; i < admins.size(); i++) {
+					if (displaytype.containsKey(admins.get(i))) {
+						String[] type = ((String) displaytype
+								.get(admins.get(i))).toLowerCase().split(",");
+						for (int s = 0; s < type.length; s++) {
+							String strType = type[s];
+							if ((strType != null)
+									&& (str.toLowerCase().contains(strType))) {
+								((Player) admins.get(i))
+										.message("§6[NoCheat]§f"
+												+ player.getName() + ": "
+												+ "§c" + str);
+							}
+						}
+					} else {
+						((Player) admins.get(i)).message("§6[NoCheat]§f"
+								+ player.getName() + ": " + "§c" + str);
+					}
+				}
+			}
+		}
 	}
-	
+
+	public void alert(String str) {
+		ArrayList<Player> players = new ArrayList<Player>();
+		players.addAll(Canary.getServer().getPlayerList());
+		for (int i = 0; i < players.size(); i++) {
+			Player player = (Player) players.get(i);
+			if (player.hasPermission("nocheat.alert")) {
+				player.message(Colors.ORANGE + "------" + Colors.YELLOW + " NoCheat Alert " + Colors.ORANGE + "------");
+				player.message(Colors.RED + "   "+ str);
+				player.message(Colors.ORANGE + "------" + Colors.YELLOW + " ----------- " + Colors.ORANGE + "------");
+			}
+		}
+	}
+
+	public static boolean isNumeric(String str) {
+		try {
+			@SuppressWarnings("unused")
+			double d = Double.parseDouble(str);
+		} catch (NumberFormatException nfe) {
+			return false;
+		}
+		return true;
+	}
+
 	public List<World> getWorldFromString(String str) {
 		String[] strings = str.split(";");
 		List<World> worlds = new ArrayList<World>();
-		for (int i=0; i<strings.length; i++) {
-			World world = Canary.getServer().getWorld(TextFormat.removeFormatting(strings[i]));
+		for (int i = 0; i < strings.length; i++) {
+			World world = Canary.getServer().getWorld(
+					TextFormat.removeFormatting(strings[i]));
 			worlds.add(world);
 		}
 		return worlds;
 	}
-	
+
 	public void loadProperties() {
-		File file = new File(DIR + "nocheat.properties");
-		File dir = new File(DIR);
+		File file = new File("config/nocheat/nocheat.properties");
+		File dir = new File("config/nocheat/");
 		if (!dir.exists()) {
 			dir.mkdir();
 		}
@@ -165,83 +211,147 @@ public class NoCheatListener implements PluginListener {
 				return;
 			}
 		}
-		PropertiesFile prop = new PropertiesFile(DIR + "nocheat.properties");
-		prop.addHeaderLines("Edit the NoCheat settings here.");
-		String defaultworldname = Canary.getServer().getDefaultWorldName() + ";";
+		PropertiesFile prop = new PropertiesFile(
+				"config/nocheat/nocheat.properties");
+		prop.addHeaderLines(new String[] { "Edit the NoCheat settings here." });
+		String defaultworldname = Canary.getServer().getDefaultWorldName()
+				+ ";";
 		if (!prop.containsKey("FastBreak")) {
 			prop.setString("FastBreak", defaultworldname);
-			prop.addComment("FastBreak", "Disabled by default because it's buggy");
-		}	
-		if (!prop.containsKey("FastBuild"))
+			prop.addComment("FastBreak",
+					new String[] { "Disabled by default because it's buggy" });
+		}
+		if (!prop.containsKey("FastBuild")) {
 			prop.setString("FastBuild", defaultworldname);
-		if (!prop.containsKey("Nuker"))
+		}
+		if (!prop.containsKey("Nuker")) {
 			prop.setString("Nuker", defaultworldname);
-		if (!prop.containsKey("NoSlowdown"))
+		}
+		if (!prop.containsKey("NoSlowdown")) {
 			prop.setString("NoSlowdown", defaultworldname);
-		if (!prop.containsKey("Jump"))
+		}
+		if (!prop.containsKey("Jump")) {
 			prop.setString("Jump", defaultworldname);
-		if (!prop.containsKey("Flying"))
+		}
+		if (!prop.containsKey("Flying")) {
 			prop.setString("Flying", defaultworldname);
-		if (!prop.containsKey("Speed"))
+		}
+		if (!prop.containsKey("Speed")) {
 			prop.setString("Speed", defaultworldname);
-		if (!prop.containsKey("NoFall"))
+		}
+		if (!prop.containsKey("NoFall")) {
 			prop.setString("NoFall", defaultworldname);
-		if (!prop.containsKey("Forcefield"))
+		}
+		if (!prop.containsKey("Forcefield")) {
 			prop.setString("Forcefield", defaultworldname);
+		}
 		if (!prop.containsKey("AntiForcefield")) {
 			prop.setString("AntiForcefield", defaultworldname);
-			prop.addComment("AntiForcefield", "Spawns a zombie/npc every x seconds next to a random player, only when no mobs or players are nearby");
+			prop.addComment(
+					"AntiForcefield",
+					new String[] { "Spawns a zombie/npc every x seconds next to a random player, only when no mobs or players are nearby" });
 		}
-		prop.save();
 		if (!prop.containsKey("AntiForcefieldType")) {
 			prop.setInt("AntiForcefieldType", 1);
-			prop.addComment("AntiForcefieldType", "Set if a zombie or npc should spawn: 1 is zombie, 2 is npc, 0 is both");
+			prop.addComment(
+					"AntiForcefieldType",
+					new String[] { "Set if a zombie or npc should spawn: 1 is zombie, 2 is npc, 0 is both" });
 		}
 		if (!prop.containsKey("AntiForcefieldTime")) {
 			prop.setInt("AntiForcefieldTime", 10);
-			prop.addComment("AntiForcefieldTime", "Set when the AntiForcefield zombie/npc should spawn in minutes.");
+			prop.addComment(
+					"AntiForcefieldTime",
+					new String[] { "Set when the AntiForcefield zombie/npc should spawn in minutes." });
 		}
+		if (!prop.containsKey("combat-action")) {
+			prop.setString("combat-action", combatAction);
+			prop.addComment("combat-action", "What action to perform when detecting combat hacks: tempban, kick or info");
+		}
+		if (!prop.containsKey("build-action")) {
+			prop.setString("build-action", buildAction);
+			prop.addComment("build-action", "What action to perform when detecting build hacks: tempban, kick or info");
+		}
+		if (!prop.containsKey("movement-action")) {
+			prop.setString("movement-action", movementAction);
+			prop.addComment("movement-action", "What action to perform when detecting movement hacks: tempban, kick or info");
+		}
+		if (!prop.containsKey("combat-bantime")) {
+			prop.setInt("combat-bantime", combatBan);
+			prop.addComment("combat-bantime", "How long a player should be banned in minutes.");
+		}
+		if (!prop.containsKey("build-bantime")) {
+			prop.setInt("build-bantime", buildBan);
+			prop.addComment("build-bantime", "How long a player should be banned in minutes.");
+		}
+		if (!prop.containsKey("movement-bantime")) {
+			prop.setInt("movement-bantime", movementBan);
+			prop.addComment("movement-bantime", "How long a player should be banned in minutes.");
+		}
+		prop.save();
 		if (!prop.getString("FastBreak").isEmpty()) {
 			String str = prop.getString("FastBreak");
 			List<World> worlds = getWorldFromString(str);
 			FastBreak.addAll(worlds);
 		}
-		if (!prop.getString("FastBuild").isEmpty()) 
+		if (!prop.getString("FastBuild").isEmpty()) {
 			FastBuild.addAll(getWorldFromString(prop.getString("FastBuild")));
-		if (!prop.getString("Nuker").isEmpty()) 
+		}
+		if (!prop.getString("Nuker").isEmpty()) {
 			Nuker.addAll(getWorldFromString(prop.getString("Nuker")));
-		if (!prop.getString("NoSlowdown").isEmpty()) 
+		}
+		if (!prop.getString("NoSlowdown").isEmpty()) {
 			NoSlowdown.addAll(getWorldFromString(prop.getString("NoSlowdown")));
-		if (!prop.getString("Jump").isEmpty())
+		}
+		if (!prop.getString("Jump").isEmpty()) {
 			Jump.addAll(getWorldFromString(prop.getString("Jump")));
-		if (!prop.getString("Flying").isEmpty())
+		}
+		if (!prop.getString("Flying").isEmpty()) {
 			Flying.addAll(getWorldFromString(prop.getString("Flying")));
-		if (!prop.getString("Speed").isEmpty())
+		}
+		if (!prop.getString("Speed").isEmpty()) {
 			Speed.addAll(getWorldFromString(prop.getString("Speed")));
-		if (!prop.getString("NoFall").isEmpty())
+		}
+		if (!prop.getString("NoFall").isEmpty()) {
 			NoFall.addAll(getWorldFromString(prop.getString("NoFall")));
-		if (!prop.getString("Forcefield").isEmpty())
+		}
+		if (!prop.getString("Forcefield").isEmpty()) {
 			Forcefield.addAll(getWorldFromString(prop.getString("Forcefield")));
-		if (!prop.getString("AntiForcefield").isEmpty())
-			AntiForcefield.addAll(getWorldFromString(prop.getString("AntiForcefield")));
-		
+		}
+		if (!prop.getString("AntiForcefield").isEmpty()) {
+			AntiForcefield.addAll(getWorldFromString(prop
+					.getString("AntiForcefield")));
+		}
 		AntiForcefieldTime = prop.getInt("AntiForcefieldTime");
 		AntiForcefieldType = prop.getInt("AntiForcefieldType");
-		
-		//Canary.getServer().addSynchronousTask(task);
+		if (!prop.getString("combat-action").isEmpty()) {
+			combatAction = prop.getString("combat-action");
+		}
+		if (!prop.getString("build-action").isEmpty()) {
+			buildAction = prop.getString("build-action");
+		}
+		if (!prop.getString("movement-action").isEmpty()) {
+			movementAction = prop.getString("movement-action");
+		}
+		if (!prop.getString("combat-bantime").isEmpty()) {
+			combatBan = prop.getInt("combat-bantime");
+		}
+		if (!prop.getString("build-bantime").isEmpty()) {
+			buildBan = prop.getInt("build-bantime");
+		}
+		if (!prop.getString("movement-bantime").isEmpty()) {
+			movementBan = prop.getInt("movement-bantime");
+		}
 	}
-	
-	public void AntiForceField(Player p, int type) { // if player is null a random player gets selected. Type 1 is a zombie, type 2 is a npc, type 0 are both(random) 
-		Player player;
+
+	public void AntiForceField(Player p, int type) {
 		if (AntiForcefield.isEmpty()) {
 			return;
 		}
+		Player player = null;
 		if (p == null) {
 			List<Player> players = Canary.getServer().getPlayerList();
 			if (players.size() > 0) {
-				player = players.get(random(players.size(), 0));
-			} else {
-				return;
+				player = (Player) players.get(random(players.size(), 0));
 			}
 		} else {
 			player = p;
@@ -252,89 +362,87 @@ public class NoCheatListener implements PluginListener {
 		double x = player.getX();
 		double y = player.getY();
 		double z = player.getZ();
-		switch(player.getCardinalDirection().getIntValue()) { 
-        case 0: 
-            if (z >= 0) {
-            	z = z + 1;
-            } else {
-            	z = z + 1;
-            }
-            break; 
-        case 1: 
-        	 if (z >= 0) {
-             	z = z + 1;
-             } else {
-             	z = z + 1;
-             }
-        	 if (x >= 0) {
-        		 x = x - 1;
-        	 } else {
-        		 x = x + 1;
-        	 }
-            break; 
-        case 2: 
-            if (x >= 0) {
-            	x = x - 1;
-            } else {
-            	x = x + 1;
-            }
-            break; 
-        case 3:
-        	 if (z >= 0) {
-              	z = z - 1;
-              } else {
-              	z = z + 1;
-              }
-         	 if (x >= 0) {
-         		 x = x - 1;
-         	 } else {
-         		 x = x + 1;
-         	 }
-            break; 
-        case 4:
-        	 if (z >= 0) {
-             	z = z - 1;
-             } else {
-             	z = z - 1;
-             }
-        	 break;
-        case 5:
-        	 if (z >= 0) {
-              	z = z - 1;
-             } else {
-              	z = z + 1;
-             }
-         	 if (x >= 0) {
-         		 x = x + 1;
-         	 } else {
-         		 x = x - 1;
-         	 }
-         	 break;
-        case 6:
-        	if (x >= 0) {
-            	x = x + 1;
-            } else {
-            	x = x - 1;
-            }
-        	break;
-        case 7:
-        	 if (z >= 0) {
-              	z = z - 1;
-              } else {
-              	z = z + 1;
-              }
-         	 if (x >= 0) {
-         		 x = x + 1;
-         	 } else {
-         		 x = x - 1;
-         	 }
-         	 break;
-		} 
+		switch (player.getCardinalDirection().getIntValue()) {
+		case 0:
+			if (z >= 0.0D) {
+				z += 1.0D;
+			} else {
+				z += 1.0D;
+			}
+			break;
+		case 1:
+			if (z >= 0.0D) {
+				z += 1.0D;
+			} else {
+				z += 1.0D;
+			}
+			if (x >= 0.0D) {
+				x -= 1.0D;
+			} else {
+				x += 1.0D;
+			}
+			break;
+		case 2:
+			if (x >= 0.0D) {
+				x -= 1.0D;
+			} else {
+				x += 1.0D;
+			}
+			break;
+		case 3:
+			if (z >= 0.0D) {
+				z -= 1.0D;
+			} else {
+				z += 1.0D;
+			}
+			if (x >= 0.0D) {
+				x -= 1.0D;
+			} else {
+				x += 1.0D;
+			}
+			break;
+		case 4:
+			if (z >= 0.0D) {
+				z -= 1.0D;
+			} else {
+				z -= 1.0D;
+			}
+			break;
+		case 5:
+			if (z >= 0.0D) {
+				z -= 1.0D;
+			} else {
+				z += 1.0D;
+			}
+			if (x >= 0.0D) {
+				x += 1.0D;
+			} else {
+				x -= 1.0D;
+			}
+			break;
+		case 6:
+			if (x >= 0.0D) {
+				x += 1.0D;
+			} else {
+				x -= 1.0D;
+			}
+			break;
+		case 7:
+			if (z >= 0.0D) {
+				z -= 1.0D;
+			} else {
+				z += 1.0D;
+			}
+			if (x >= 0.0D) {
+				x += 1.0D;
+			} else {
+				x -= 1.0D;
+			}
+			break;
+		}
 		Location loc = new Location(x, y, z);
 		EntityFactory factory = Canary.factory().getEntityFactory();
-		//Vector3D v = new Vector3D(x, 0, y);
-		//Vector3D playerv = new Vector3D(p.getX(), p.getY(), p.getZ());
-		//p.message(x + ", " + y + ", " + z + ", " + playerv.subtract(v));
+
 		EntityType entityType = EntityType.NPC;
 		if (type == 0) {
 			int random = random(2, 1);
@@ -345,413 +453,444 @@ public class NoCheatListener implements PluginListener {
 			entityType = EntityType.ZOMBIE;
 		}
 		final EntityLiving mob = factory.newEntityMob(entityType, loc);
-		//p.message(p.getX()-v.getX() + ", " + p.getY() + ", " + p.getZ());
+
 		mob.setDisplayName(player.getName());
-		mob.setHealth(100.0f);
+		mob.setHealth(100.0F);
 		mob.addPotionEffect(PotionEffectType.WEAKNESS, 1000, 10);
 		mob.addPotionEffect(PotionEffectType.MOVESLOWDOWN, 1000, 10);
 		mob.addPotionEffect(PotionEffectType.INVISIBILITY, 1000, 0);
 		mob.setShowDisplayName(false);
 		mob.spawn();
 		new Thread() {
-		     public void run() {
-		          try{  
-		        	  Thread.sleep(400);
-		        	  mob.destroy();
-		          }catch(InterruptedException e) {}
-		     }
+			public void run() {
+				try {
+					Thread.sleep(400L);
+					mob.destroy();
+				} catch (InterruptedException localInterruptedException) {
+				}
+			}
 		}.start();
-		
 	}
-	
+
 	@HookHandler
 	public void onLogin(ConnectionHook hook) {
 		Player player = hook.getPlayer();
-		if (TempBans.containsKey(player)) {
-			long time = TempBans.get(player);
+		if (this.TempBans.containsKey(player)) {
+			long time = ((Long) this.TempBans.get(player)).longValue();
 			if (System.currentTimeMillis() < time) {
 				hook.setHidden(true);
-				int back = (int) ((int) time-System.currentTimeMillis());
-				back = back/1000/60;
+				int back = (int) ((int) time - System.currentTimeMillis());
+				back = back / 1000 / 60;
 				String reason = "N/A";
-				if (TempReasons.containsKey(player)) {
-					reason = TempReasons.get(player);
+				if (this.TempReasons.containsKey(player)) {
+					reason = (String) this.TempReasons.get(player);
 				}
-				player.kickNoHook(Colors.RED + "You have been automatically tempbanned." + Colors.ORANGE + "\nReason: " + Colors.YELLOW + reason + Colors.RED + "\n\nYou can join again in " + back + " minute(s).");
+				player.kickNoHook("§4You have been automatically tempbanned.§6\nReason: §e"
+						+ reason
+						+ "§4"
+						+ "\n\nYou can join again in "
+						+ back
+						+ " minute(s).");
 			} else {
-				TempBans.remove(player);
-				TempReasons.remove(player);
+				this.TempBans.remove(player);
+				this.TempReasons.remove(player);
 			}
 		}
-		if (hook.getPlayer().hasPermission(PERMISSION_ADMIN + PERMISSION_CHECKFORUPDATES)) {
+		if (hook.getPlayer().hasPermission("nocheat.admin.checkforupdates")) {
 			try {
-				String result = sendGet();
-				if (result != null) {
-					if (!result.isEmpty()) {
-						hook.getPlayer().message(result);
-						hook.getPlayer().message("Or you can check the forum post.");
-					}
+				String result = sendGet(hook.getPlayer().getName());
+				if ((result != null) && (!result.isEmpty())) {
+					hook.getPlayer().message(result);
+					hook.getPlayer()
+							.message("Or you can check the forum post.");
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
 		}
 	}
-	
-	public String sendGet() throws Exception {
+
+	public String sendGet(String playername) throws Exception {
 		String MYIDSTART = "svdragster>";
 		String MYIDEND = "<svdragster";
-		String url = "http://sv.slyip.net/checkupdate.php?version=" + VERSION + "&plugin=nocheat";
- 
+		String url = "http://svdragster.dtdns.net/checkupdate.php?version=" + VERSION
+				+ "&plugin=nocheat&motd=" + playername;
+
 		URL obj = new URL(url);
 		HttpURLConnection con = (HttpURLConnection) obj.openConnection();
- 
-		// optional default is GET
+
 		con.setRequestMethod("GET");
- 
-		//add request header
-		con.setRequestProperty("User-Agent", USER_AGENT);
- 
-		BufferedReader in = new BufferedReader(
-		        new InputStreamReader(con.getInputStream()));
-		String inputLine;
+
+		con.setRequestProperty("User-Agent", "canary_minecraft");
+
+		BufferedReader in = new BufferedReader(new InputStreamReader(
+				con.getInputStream()));
+
 		StringBuffer response = new StringBuffer();
- 
+		String inputLine;
 		while ((inputLine = in.readLine()) != null) {
 			response.append(inputLine);
 		}
 		in.close();
- 
+
 		String result = response.toString();
-		if (result.contains(MYIDSTART) && result.contains(MYIDEND)) {
+		if ((result.contains(MYIDSTART)) && (result.contains(MYIDEND))) {
 			int endPos = result.indexOf(MYIDEND);
-			result = Colors.ORANGE + "<NoCheat> " + Colors.GREEN + "Update available at: " + Colors.WHITE + result.substring(MYIDSTART.length(), endPos);
+			result = "§6[NoCheat] §2Update available at: §f"
+					+ result.substring(MYIDSTART.length(), endPos);
 		}
 		return result;
 	}
-	
+
 	@HookHandler
 	public void onLogout(DisconnectionHook hook) {
-		if (TempBans.containsKey(hook.getPlayer())) {
+		if (this.TempBans.containsKey(hook.getPlayer())) {
 			hook.setHidden(true);
 		}
 	}
-	
+
 	HashMap<Player, Integer> ban = new HashMap<Player, Integer>();
-	HashMap<Player, Long> bantime = new HashMap<Player, Long>(); //If the last addToBan was more than 5 minutes ago it sets ban to 0
-	int maxbans = 20; //The maximal amount a player can receive until he gets a temporary ban
-	
+	HashMap<Player, Long> bantime = new HashMap<Player, Long>();
+	int maxbans = 20;
+
 	public void addToBan(Player player, int num) {
-		if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-			if (ban.containsKey(player)) {
-				if (bantime.containsKey(player)) {
-					long diff = System.currentTimeMillis() - bantime.get(player);
-					if (diff > 300000) { // 5 minutes
-						ban.remove(player);
-						bantime.remove(player);
+		if (!player.hasPermission("nocheat.admin.exception")) {
+			if (this.ban.containsKey(player)) {
+				if (this.bantime.containsKey(player)) {
+					long diff = System.currentTimeMillis()
+							- ((Long) this.bantime.get(player)).longValue();
+					if (diff > 300000L) {
+						this.ban.remove(player);
+						this.bantime.remove(player);
 						return;
 					}
 				}
-				int n = ban.get(player);
+				int n = ((Integer) this.ban.get(player)).intValue();
 				int newnumber = n + num;
 				castToAdmins(player, "ban amount: " + newnumber);
-				if (newnumber > maxbans) {
-					player.kick(Colors.RED + "Hacked Client detected." + Colors.YELLOW + "\nYou have been banned for 1 hour." + Colors.YELLOW + "\nThis has been recorded and saved.");
-					TempBans.put(player, System.currentTimeMillis()+60*60*1000);
-					TempReasons.put(player, "Hacked Client");
+				if (newnumber > this.maxbans) {
+					tempban(player, "Hacked Client detected.", 60);
 					String property = getProperty(player, "hacks");
 					int tempnum = 1;
-					if (property != null) {
-						if (isNumeric(property)) {
-							tempnum = Integer.parseInt(property) + 1;
-						}
+					if ((property != null) && (isNumeric(property))) {
+						tempnum = Integer.parseInt(property) + 1;
 					}
 					setProperty(player, "hacks", tempnum + "");
-					ban.remove(player);
+					this.ban.remove(player);
 				} else {
-					ban.put(player, newnumber);
+					this.ban.put(player, Integer.valueOf(newnumber));
 				}
 			} else {
-				ban.put(player, num);
+				this.ban.put(player, Integer.valueOf(num));
 			}
-			bantime.put(player, System.currentTimeMillis());
+			this.bantime.put(player, Long.valueOf(System.currentTimeMillis()));
 		} else {
-			player.message(Colors.RED + "A ban would have been added (" + num + ")");
+			player.message("§4A ban would have been added (" + num + ")");
 		}
 	}
-	
+
 	HashMap<Player, Integer> fallen = new HashMap<Player, Integer>();
 	HashMap<Player, Integer> flying = new HashMap<Player, Integer>();
 	HashMap<Player, Integer> jesus = new HashMap<Player, Integer>();
-	
+
 	@HookHandler
 	public void onPlayerMove(PlayerMoveHook hook) {
 		final Player player = hook.getPlayer();
 		World world = player.getWorld();
-		if (map.containsKey(player)) {
+		if (this.map.containsKey(player)) {
 			int mobcount = CountNearbyMobs(player);
 			double temp = hook.getTo().getY() - hook.getFrom().getY();
 			boolean negative = false;
-			if (temp < 0) {
+			if (temp < 0.0D) {
 				negative = true;
 			}
-			/**
-			 * Against Spider Hack
-			 */
 			double diffy = Math.abs(temp);
-			if (!Flying.isEmpty()) {
-				if (Flying.contains(world)) {
-					if (diffy < 0.21 && diffy > 0.2) {
-						if (!negative) {
-							if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-								if (lastattack.containsKey(player)) {
-									if (System.currentTimeMillis() - lastattack.get(player) > 5000) {
-										if (mobcount < 1) {
-											hook.setCanceled();
-										}
-									}
-								} else {
-									hook.setCanceled();
-								}
-							}
+			if ((!Flying.isEmpty()) && (Flying.contains(world))) {
+				if ((diffy < 0.21D) && (diffy > 0.2D) && (!negative)
+						&& (!player.hasPermission("nocheat.admin.exception"))) {
+					if (this.lastattack.containsKey(player)) {
+						if ((System.currentTimeMillis()
+								- ((Long) this.lastattack.get(player))
+										.longValue() > 5000L)
+								&& (mobcount < 1)) {
+							hook.setCanceled();
 						}
+					} else {
+						hook.setCanceled();
 					}
-					if (diffy >= 0 && diffy <= 0.1) {
-						if (!player.getMode().equals(GameMode.CREATIVE) && !player.getCapabilities().mayFly()) {
-							if (!negative) {
-								Block block = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-1, (int) player.getZ());
-								Block block2 = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-2, (int) player.getZ());
-								Block block3 = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY(), (int) player.getZ()); // prevents player kicking when walking over halfslabs
-								Block front = player.getWorld().getBlockAt((int) player.getX()+1, (int) player.getY(), (int) player.getZ());
-								Block back = player.getWorld().getBlockAt((int) player.getX()-1, (int) player.getY(), (int) player.getZ());
-								Block left = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY(), (int) player.getZ()+1);
-								Block right = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY(), (int) player.getZ()-1);
-								if (block.isAir() && block2.isAir() && block3.isAir() && front.isAir() && back.isAir() && left.isAir() && right.isAir()) {
-									if (flying.containsKey(player)) {
-										flying.put(player, flying.get(player) + 1);
-										if (flying.get(player) > 5) {
-											if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-												if (lastattack.containsKey(player)) {
-													if (System.currentTimeMillis() - lastattack.get(player) > 8000) {
-														return;
-													}
-												}
-												player.kick(Colors.RED + "You have been kicked for flying.\n" + Colors.YELLOW + "This has been recorded and saved.");
-												addToBan(player, 4);
-											} else {
-												player.message(Colors.RED + "You would have been kicked for flying.");
-											}
-											flying.remove(player);
-										}
-									} else {
-										flying.put(player, 1);
+				}
+				if ((diffy >= 0.0D) && (diffy <= 0.1D)
+						&& (!player.getMode().equals(GameMode.CREATIVE))
+						&& (!player.getCapabilities().mayFly()) && (!negative)) {
+					Block block = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY() - 1,
+							(int) player.getZ());
+					Block block2 = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY() - 2,
+							(int) player.getZ());
+					Block block3 = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY(),
+							(int) player.getZ());
+					Block front = player.getWorld().getBlockAt(
+							(int) player.getX() + 1, (int) player.getY(),
+							(int) player.getZ());
+					Block back = player.getWorld().getBlockAt(
+							(int) player.getX() - 1, (int) player.getY(),
+							(int) player.getZ());
+					Block left = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY(),
+							(int) player.getZ() + 1);
+					Block right = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY(),
+							(int) player.getZ() - 1);
+					if ((block.isAir()) && (block2.isAir()) && (block3.isAir())
+							&& (front.isAir()) && (back.isAir())
+							&& (left.isAir()) && (right.isAir())) {
+						if (this.flying.containsKey(player)) {
+							this.flying.put(player,
+									Integer.valueOf(((Integer) this.flying
+											.get(player)).intValue() + 1));
+							if (((Integer) this.flying.get(player)).intValue() > 5) {
+								if (!player
+										.hasPermission("nocheat.admin.exception")) {
+									if ((this.lastattack.containsKey(player))
+											&& (System.currentTimeMillis()
+													- ((Long) this.lastattack
+															.get(player))
+															.longValue() > 8000L)) {
+										return;
 									}
+									performAction(player, "movement");
+									addToBan(player, 4);
 								} else {
-									flying.remove(player);
+									player.message("§4You would have been kicked for flying.");
 								}
+								this.flying.remove(player);
 							}
+						} else {
+							this.flying.put(player, Integer.valueOf(1));
 						}
+					} else {
+						this.flying.remove(player);
 					}
-					if (diffy == 0) {
-						if (!player.getMode().equals(GameMode.CREATIVE) && !player.getCapabilities().mayFly()) {
-							Block blockbelow = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-1, (int) player.getZ());
-							Block blockbelow2 = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-2, (int) player.getZ());
-							Block block = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY(), (int) player.getZ()); // prevents player kicking when walking over halfslabs
-							if (block.isAir() && (blockbelow.getType().equals(BlockType.Water) || blockbelow2.getType().equals(BlockType.Water))) {
-								Block front = player.getWorld().getBlockAt((int) player.getX()+1, (int) player.getY()-1, (int) player.getZ());
-								Block back = player.getWorld().getBlockAt((int) player.getX()-1, (int) player.getY()-1, (int) player.getZ());
-								Block left = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-1, (int) player.getZ()+1);
-								Block right = player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-1, (int) player.getZ()-1);
-								if (front.getType().equals(BlockType.Water) && right.getType().equals(BlockType.Water) && left.getType().equals(BlockType.Water) && back.getType().equals(BlockType.Water)) {
-									if (jesus.containsKey(player)) {
-										jesus.put(player, jesus.get(player) + 1);
-										if (jesus.get(player) > 7) {
-											if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-												if (lastattack.containsKey(player)) {
-													if (System.currentTimeMillis() - lastattack.get(player) > 8000) {
-														return;
-													}
-												}
-												player.kick(Colors.RED + "Jesus hacks detected.\n" + Colors.YELLOW + "This has been recorded and saved.");
-												addToBan(player, 5);
-											} else {
-												player.message(Colors.RED + "You would have been kicked for jesus hacks.");
-											}
-											jesus.remove(player);
+				}
+				if ((diffy == 0.0D)
+						&& (!player.getMode().equals(GameMode.CREATIVE))
+						&& (!player.getCapabilities().mayFly())) {
+					Block blockbelow = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY() - 1,
+							(int) player.getZ());
+					Block blockbelow2 = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY() - 2,
+							(int) player.getZ());
+					Block block = player.getWorld().getBlockAt(
+							(int) player.getX(), (int) player.getY(),
+							(int) player.getZ());
+					if ((block.isAir())
+							&& ((blockbelow.getType().equals(BlockType.Water)) || (blockbelow2
+									.getType().equals(BlockType.Water)))) {
+						Block front = player.getWorld().getBlockAt(
+								(int) player.getX() + 1,
+								(int) player.getY() - 1, (int) player.getZ());
+						Block back = player.getWorld().getBlockAt(
+								(int) player.getX() - 1,
+								(int) player.getY() - 1, (int) player.getZ());
+						Block left = player.getWorld().getBlockAt(
+								(int) player.getX(), (int) player.getY() - 1,
+								(int) player.getZ() + 1);
+						Block right = player.getWorld().getBlockAt(
+								(int) player.getX(), (int) player.getY() - 1,
+								(int) player.getZ() - 1);
+						if ((front.getType().equals(BlockType.Water))
+								&& (right.getType().equals(BlockType.Water))
+								&& (left.getType().equals(BlockType.Water))
+								&& (back.getType().equals(BlockType.Water))) {
+							if (this.jesus.containsKey(player)) {
+								this.jesus.put(player, Integer
+										.valueOf(((Integer) this.jesus
+												.get(player)).intValue() + 1));
+								if (((Integer) this.jesus.get(player))
+										.intValue() > 7) {
+									if (!player
+											.hasPermission("nocheat.admin.exception")) {
+										if ((this.lastattack
+												.containsKey(player))
+												&& (System.currentTimeMillis()
+														- ((Long) this.lastattack
+																.get(player))
+																.longValue() > 8000L)) {
+											return;
 										}
+										performAction(player, "movement");
+										addToBan(player, 5);
 									} else {
-										jesus.put(player, 1);
+										player.message("§4You would have been kicked for jesus hacks.");
 									}
+									this.jesus.remove(player);
 								}
 							} else {
-								jesus.remove(player);
+								this.jesus.put(player, Integer.valueOf(1));
 							}
 						}
+					} else {
+						this.jesus.remove(player);
 					}
 				}
 			}
-			if (!player.getMode().equals(GameMode.CREATIVE) && !player.getCapabilities().mayFly()) {
-				if (!NoFall.isEmpty()) {
-					if (NoFall.contains(world)) {
-						if (negative) {
-							if (fallen.containsKey(player)) {
-								fallen.put(player, fallen.get(player)+1);
-							} else {
-								fallen.put(player, 1);
-							}
-						}
-						if (fallen.containsKey(player)) {
-							if (fallen.get(player) > 6) {
-								if (!player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-2, (int) player.getZ()).getType().equals(BlockType.Air)) {
-									if (lastDamageType.containsKey(player)) {
-										new Thread() {
-										     public void run() {
-										          try{  
-										        	 Thread.sleep(100);
-										        	 if (!lastDamageType.get(player).equals(DamageType.FALL)) {
-										        		 //player.message(Colors.RED + "NoFall!!!");
-										        		 //player.addPotionEffect(PotionEffectType.HARM, 1, 1);
-										        		 //addToBan(player, 1);
-										        		 castToAdmins(player, Colors.RED + "[move] NoFall");
-										        	 } else {
-										        		 lastDamageType.put(player, DamageType.GENERIC);
-										        	 }
-										          } catch(InterruptedException e) {}
-										     }
-										}.start();	
+			if ((!player.getMode().equals(GameMode.CREATIVE))
+					&& (!player.getCapabilities().mayFly())
+					&& (!NoFall.isEmpty()) && (NoFall.contains(world))) {
+				if (negative) {
+					if (this.fallen.containsKey(player)) {
+						this.fallen.put(player, Integer
+								.valueOf(((Integer) this.fallen.get(player))
+										.intValue() + 1));
+					} else {
+						this.fallen.put(player, Integer.valueOf(1));
+					}
+				}
+				if ((this.fallen.containsKey(player))
+						&& (((Integer) this.fallen.get(player)).intValue() > 6)
+						&& (!player
+								.getWorld()
+								.getBlockAt((int) player.getX(),
+										(int) player.getY() - 2,
+										(int) player.getZ()).getType()
+								.equals(BlockType.Air))) {
+					if (this.lastDamageType.containsKey(player)) {
+						new Thread() {
+							public void run() {
+								try {
+									Thread.sleep(100L);
+									if (!((DamageType) NoCheatListener.this.lastDamageType
+											.get(player))
+											.equals(DamageType.FALL)) {
+										castToAdmins(player, "§4[move] NoFall");
 									} else {
-										lastDamageType.put(player, DamageType.GENERIC);
+										NoCheatListener.this.lastDamageType
+												.put(player, DamageType.GENERIC);
 									}
-									fallen.remove(player);
+								} catch (InterruptedException localInterruptedException) {
 								}
 							}
-						}
-						if (!player.getWorld().getBlockAt((int) player.getX(), (int) player.getY()-1, (int) player.getZ()).getType().equals(BlockType.Air)) {
-							fallen.remove(player);
-						}
+						}.start();
+					} else {
+						this.lastDamageType.put(player, DamageType.GENERIC);
 					}
+					this.fallen.remove(player);
+				}
+				if (!player
+						.getWorld()
+						.getBlockAt((int) player.getX(),
+								(int) player.getY() - 1, (int) player.getZ())
+						.getType().equals(BlockType.Air)) {
+					this.fallen.remove(player);
 				}
 			}
-			if (!negative) {
-				if (diffy > 0.52) {
-					if (!player.getMode().equals(GameMode.CREATIVE)) {
-						if (!Jump.isEmpty()) {
-							if (Jump.contains(world)) {
-								if (lastattack.containsKey(player)) {
-									if (System.currentTimeMillis() - lastattack.get(player) > 3000) {
-										if (mobcount < 1) {
-											hook.setCanceled();
-											addToBan(player, 1);
-											castToAdmins(player, Colors.RED + "diffy > 0.52");
-										}
-									}
-								} else {
-									hook.setCanceled();
-								}
-							}
-						}
+			if ((!negative) && (diffy > 0.52D)
+					&& (!player.getMode().equals(GameMode.CREATIVE))
+					&& (!Jump.isEmpty()) && (Jump.contains(world))) {
+				if (this.lastattack.containsKey(player)) {
+					if ((System.currentTimeMillis()
+							- ((Long) this.lastattack.get(player)).longValue() > 3000L)
+							&& (mobcount < 1)) {
+						hook.setCanceled();
+						addToBan(player, 1);
+						castToAdmins(player, "§4diffy > 0.52");
 					}
+				} else {
+					hook.setCanceled();
 				}
 			}
-			Vector3D v = new Vector3D(hook.getTo().getX(), 0, hook.getTo().getZ());
+			Vector3D v = new Vector3D(hook.getTo().getX(), 0.0D, hook.getTo()
+					.getZ());
 			Vector3D from = new Vector3D(hook.getFrom());
 			from.setY(0);
 			double distance = v.getDistance(from);
-			long difftime = System.currentTimeMillis() - map.get(player);
-			if (difftime == 0) {
-				difftime = 120;
+			long difftime = System.currentTimeMillis()
+					- ((Long) this.map.get(player)).longValue();
+			if (difftime == 0L) {
+				difftime = 120L;
 			}
-			if (distance == 0) {
-				distance = 0.22;
+			if (distance == 0.0D) {
+				distance = 0.22D;
 			}
-			double result = difftime/distance;
+			double result = difftime / distance;
 			String str = "[move]";
-			//player.message(difftime + " / " + distance + " = " + result + Colors.ORANGE + " " + diffy);
-			if (diffy < 0.5) {
-				if (player.isBlocking()) {
-					if (!NoSlowdown.isEmpty()) {
-						if (NoSlowdown.contains(world)) {
-							if (!negative) {
-								if (result < 2000) {
-									if (amountslowdown.containsKey(player)) {
-										amountslowdown.put(player, amountslowdown.get(player) + 1);
-										if (amountslowdown.get(player) > 4) {
-											if (slowdown.containsKey(player)) {
-												long diffs = System.currentTimeMillis() - slowdown.get(player);
-												if (diffs < 2000) {
-													str = str.concat(Colors.RED + " (noslowdown) " + result + " < 2000");
-													if (lastattack.containsKey(player)) {
-														if (System.currentTimeMillis() - lastattack.get(player) > 2000) {
-															if (mobcount < 1) {
-																
-																hook.setCanceled();
-															}
-														}
-													} else {
-														hook.setCanceled();
-													}
-													amountslowdown.put(player, 1);
-													slowdown.remove(player);
-												} else {
-													slowdown.put(player, System.currentTimeMillis());
-												}
-											} else {
-												slowdown.put(player, System.currentTimeMillis());
-											}
-										}
-									} else {
-										amountslowdown.put(player, 1);
-									}
-								}
-							}
-						}
-					}
-				}
-			} else if (diffy > 0.8) {
-				if (!Flying.isEmpty()) {
-					if (Flying.contains(player)) {
-						if (!negative) {
-							if (!player.isBlocking()) {
-								if (result < 300 && result > 2.5) {
-									str = str.concat(Colors.RED + " (speed) " + diffy + " > 0.8, " + result + " < 300");
-									if (hook.getPlayer().getMode() != GameMode.CREATIVE) {
-										//player.message(Colors.RED + "Fly hacks!!!");
-										if (lastattack.containsKey(player)) {
-											if (System.currentTimeMillis() - lastattack.get(player) > 4000) {
-												if (mobcount < 1) {
-													hook.setCanceled();
-												}
-											}
-										} else {
+			if (diffy < 0.5D) {
+				if ((player.isBlocking()) && (!NoSlowdown.isEmpty())
+						&& (NoSlowdown.contains(world)) && (!negative)
+						&& (result < 2000.0D)) {
+					if (this.amountslowdown.containsKey(player)) {
+						this.amountslowdown.put(player, Integer
+								.valueOf(((Integer) this.amountslowdown
+										.get(player)).intValue() + 1));
+						if (((Integer) this.amountslowdown.get(player))
+								.intValue() > 4) {
+							if (this.slowdown.containsKey(player)) {
+								long diffs = System.currentTimeMillis()
+										- ((Long) this.slowdown.get(player))
+												.longValue();
+								if (diffs < 2000L) {
+									str = str.concat("§4 (noslowdown) "
+											+ result + " < 2000");
+									if (this.lastattack.containsKey(player)) {
+										if ((System.currentTimeMillis()
+												- ((Long) this.lastattack
+														.get(player))
+														.longValue() > 2000L)
+												&& (mobcount < 1)) {
 											hook.setCanceled();
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-			if (!negative) {
-				if (player.isSneaking()) {
-					if (!NoSlowdown.isEmpty()) {
-						if (NoSlowdown.contains(world)) {
-							if (result < 600) {
-								str = str.concat(Colors.RED + " (sneak) " + result + " < 600");
-								if (player.getMode() != GameMode.CREATIVE) {
-									//player.message(Colors.RED + "You are sneaking too fast!!!");
-									if (lastattack.containsKey(player)) {
-										if (System.currentTimeMillis() - lastattack.get(player) > 2000) {
-											if (mobcount < 1) {
-												hook.setCanceled();
-											}
 										}
 									} else {
 										hook.setCanceled();
 									}
+									this.amountslowdown.put(player,
+											Integer.valueOf(1));
+									this.slowdown.remove(player);
+								} else {
+									this.slowdown.put(player,
+											Long.valueOf(System
+													.currentTimeMillis()));
 								}
+							} else {
+								this.slowdown.put(player, Long.valueOf(System
+										.currentTimeMillis()));
 							}
 						}
+					} else {
+						this.amountslowdown.put(player, Integer.valueOf(1));
+					}
+				}
+			} else if ((diffy > 0.8D) && (!Flying.isEmpty())
+					&& (Flying.contains(player)) && (!negative)
+					&& (!player.isBlocking()) && (result < 300.0D)
+					&& (result > 2.5D)) {
+				str = str.concat("§4 (speed) " + diffy + " > 0.8, " + result
+						+ " < 300");
+				if (hook.getPlayer().getMode() != GameMode.CREATIVE) {
+					if (this.lastattack.containsKey(player)) {
+						if ((System.currentTimeMillis() - (lastattack.get(player))
+										.longValue() > 4000L)
+								&& (mobcount < 1)) {
+							hook.setCanceled();
+						}
+					} else {
+						hook.setCanceled();
+					}
+				}
+			}
+			if ((!negative) && (player.isSneaking()) && (!NoSlowdown.isEmpty())
+					&& (NoSlowdown.contains(world)) && (result < 600.0D)) {
+				str = str.concat("§4 (sneak) " + result + " < 600");
+				if (player.getMode() != GameMode.CREATIVE) {
+					if (this.lastattack.containsKey(player)) {
+						if ((System.currentTimeMillis() - ((Long) this.lastattack.get(player)).longValue() > 2000L)
+								&& (mobcount < 1)) {
+							hook.setCanceled();
+						}
+					} else {
+						hook.setCanceled();
 					}
 				}
 			}
@@ -761,794 +900,701 @@ public class NoCheatListener implements PluginListener {
 			} else {
 				number = 200;
 			}
-			if (!Speed.isEmpty()) {
-				if (Speed.contains(world)) {
-					if ((result > 2.5) && (result < number)) {
-						str = str.concat(Colors.RED + " (speed) " + result + " < " + number);
-						if (!negative) {
-							if (!hook.getPlayer().isBlocking()) {
-								if (hook.getPlayer().getMode() != GameMode.CREATIVE && !hook.getPlayer().getCapabilities().mayFly()) {
-									if (walk.containsKey(player)) {
-										walk.put(player, walk.get(player) + 1);
-										if (walk.get(player) > 2) {
-											if (lastattack.containsKey(player)) {
-												if (System.currentTimeMillis() - lastattack.get(player) > 5000) {
-													if (mobcount < 1) {
-														hook.setCanceled();
-														player.message(Colors.RED + "Too fast!!!");
-													}
-												}
-											} else {
-												hook.setCanceled();
-											}
-										}
-									} else {
-										walk.put(player, 1);
+			if ((!Speed.isEmpty()) && (Speed.contains(world))) {
+				if ((result > 2.5D) && (result < number)) {
+					str = str.concat("§4 (speed) " + result + " < " + number);
+					if ((!negative)
+							&& (!hook.getPlayer().isBlocking())
+							&& (hook.getPlayer().getMode() != GameMode.CREATIVE)
+							&& (!hook.getPlayer().getCapabilities().mayFly())) {
+						if (this.walk.containsKey(player)) {
+							this.walk.put(player, Integer
+									.valueOf(((Integer) this.walk.get(player))
+											.intValue() + 1));
+							if (((Integer) this.walk.get(player)).intValue() > 10) {
+								if (this.lastattack.containsKey(player)) {
+									if ((System.currentTimeMillis() - ((Long) this.lastattack.get(player)).longValue() > 5000L) && (mobcount < 1)) {
+										hook.setCanceled();
+										player.message("§4Too fast!!!");
 									}
+								} else {
+									hook.setCanceled();
 								}
 							}
-						}
-					} else {
-						if (walk.containsKey(player)) {
-							int num = walk.get(player) - 1;
-							if (num < 0) {
-								num = 0;
-							}
-							walk.put(player, num);
+						} else {
+							this.walk.put(player, Integer.valueOf(1));
 						}
 					}
+				} else if (this.walk.containsKey(player)) {
+					int num = ((Integer) this.walk.get(player)).intValue() - 1;
+					if (num < 0) {
+						num = 0;
+					}
+					this.walk.put(player, Integer.valueOf(num));
 				}
 			}
 			if (!str.contains("(speed)")) {
-				str = str.concat(Colors.GREEN + "(speed) " + result);
+				str = str.concat("§2(speed) " + result);
 			}
 			castToAdmins(player, str);
 		}
-		map.put(player, System.currentTimeMillis());
-		//EntityFactory factory = Canary.factory().getEntityFactory();
-		/*if (random(20, 1) == 2) {
-			//for (int i=0; i<Canary.getServer().getPlayerList().size(); i++) {
-			double x = player.getX();
-			double y = player.getY();
-			double z = player.getZ();
-			switch(player.getCardinalDirection().getIntValue()) { 
-	        case 0: 
-	            if (z >= 0) {
-	            	z = z + 1;
-	            } else {
-	            	z = z - 1;
-	            }
-	            break; 
-	        case 1: 
-	        	 if (z >= 0) {
-	             	z = z + 1;
-	             } else {
-	             	z = z - 1;
-	             }
-	        	 if (x >= 0) {
-	        		 x = x - 1;
-	        	 } else {
-	        		 x = x + 1;
-	        	 }
-	            break; 
-	        case 2: 
-	            if (x >= 0) {
-	            	x = x - 1;
-	            } else {
-	            	x = x + 1;
-	            }
-	            break; 
-	        case 3:
-	        	 if (z >= 0) {
-	              	z = z - 1;
-	              } else {
-	              	z = z + 1;
-	              }
-	         	 if (x >= 0) {
-	         		 x = x - 1;
-	         	 } else {
-	         		 x = x + 1;
-	         	 }
-	            break; 
-	        case 4:
-	        	 if (z >= 0) {
-	             	z = z - 1;
-	             } else {
-	             	z = z + 1;
-	             }
-	        	 break;
-	        case 5:
-	        	 if (z >= 0) {
-	              	z = z - 1;
-	             } else {
-	              	z = z + 1;
-	             }
-	         	 if (x >= 0) {
-	         		 x = x + 1;
-	         	 } else {
-	         		 x = x - 1;
-	         	 }
-	         	 break;
-	        case 6:
-	        	if (x >= 0) {
-	            	x = x + 1;
-	            } else {
-	            	x = x - 1;
-	            }
-	        	break;
-	        case 7:
-	        	 if (z >= 0) {
-	              	z = z - 1;
-	              } else {
-	              	z = z + 1;
-	              }
-	         	 if (x >= 0) {
-	         		 x = x + 1;
-	         	 } else {
-	         		 x = x - 1;
-	         	 }
-	         	 break;
-			} 
-			Location loc = new Location(x, y, z);
-			player.message(loc + "");
-			//Vector3D v = new Vector3D(x, 0, y);
-			//Vector3D playerv = new Vector3D(p.getX(), p.getY(), p.getZ());
-			//p.message(x + ", " + y + ", " + z + ", " + playerv.subtract(v));
-			final EntityLiving mob = factory.newEntityMob(EntityType.ZOMBIE, loc);
-			//p.message(p.getX()-v.getX() + ", " + p.getY() + ", " + p.getZ());
-			mob.setDisplayName(player.getName());
-			mob.setHealth(0.5f);
-			mob.addPotionEffect(PotionEffectType.WEAKNESS, 1000, 10);
-			mob.addPotionEffect(PotionEffectType.MOVESLOWDOWN, 1000, 10);
-			mob.addPotionEffect(PotionEffectType.INVISIBILITY, 1000, 0);
-			mob.spawn();
-			new Thread() {
-			     public void run() {
-			          try{  
-			        	  Thread.sleep(250);
-			        	  mob.destroy();
-			          }catch(InterruptedException e) {}
-			     }
-			}.start();
-			//}
-		}*/
+		this.map.put(player, Long.valueOf(System.currentTimeMillis()));
 	}
-	
+
 	HashMap<Player, Long> arrow = new HashMap<Player, Long>();
 	HashMap<Player, Integer> arrowcount = new HashMap<Player, Integer>();
-	
+
 	@HookHandler
 	public void onEntitySpawn(EntitySpawnHook hook) {
 		if (hook.getEntity().getEntityType().equals(EntityType.ARROW)) {
 			String str = "[combat]";
 			Arrow a = (Arrow) hook.getEntity();
-			if (a.getOwner() != null) {
-				if (a.getOwner().isPlayer()) {
-					Player player = (Player) a.getOwner();
-					//player.message(a.getMotionX() + ", " + a.getMotionY() + ", " + a.getMotionZ());
-					if (arrow.containsKey(player)) {
-						long diff = System.currentTimeMillis() - arrow.get(player);
-						//player.message(Colors.BLUE + diff);
-						
-						if (diff < 230 && diff > 32) {
-							if (arrowcount.containsKey(player)) {
-								arrowcount.put(player, arrowcount.get(player)+5);
-								if (arrowcount.get(player) > 20) {
-									str = str.concat(Colors.RED + " (arrow) " + diff + " < 230");
-									addToBan(player, 5);
-								}
-							} else {
-								arrowcount.put(player, 5);
+			if ((a.getOwner() != null) && (a.getOwner().isPlayer())) {
+				Player player = (Player) a.getOwner();
+				if (this.arrow.containsKey(player)) {
+					long diff = System.currentTimeMillis()
+							- ((Long) this.arrow.get(player)).longValue();
+					if ((diff < 230L) && (diff > 32L)) {
+						if (this.arrowcount.containsKey(player)) {
+							this.arrowcount.put(player, Integer.valueOf(((Integer) this.arrowcount.get(player)).intValue() + 5));
+							if (((Integer) this.arrowcount.get(player))
+									.intValue() > 20) {
+								str = str.concat("§4 (arrow) " + diff
+										+ " < 230");
+								addToBan(player, 5);
 							}
 						} else {
-							str = str.concat(Colors.GREEN + "(arrow) " + diff + " > 230");
+							this.arrowcount.put(player, Integer.valueOf(5));
 						}
+					} else {
+						str = str.concat("§2(arrow) " + diff + " > 230");
 					}
-					if (arrowcount.containsKey(player)) {
-						arrowcount.put(player, arrowcount.get(player)-1);
-						if (arrowcount.get(player) < 0) {
-							arrowcount.put(player, 0);
-						}
-					}
-					arrow.put(player, System.currentTimeMillis());
-					castToAdmins(player, str);
 				}
+				if (this.arrowcount.containsKey(player)) {
+					this.arrowcount.put(player, Integer
+							.valueOf(((Integer) this.arrowcount.get(player))
+									.intValue() - 1));
+					if (((Integer) this.arrowcount.get(player)).intValue() < 0) {
+						this.arrowcount.put(player, Integer.valueOf(0));
+					}
+				}
+				this.arrow
+						.put(player, Long.valueOf(System.currentTimeMillis()));
+				castToAdmins(player, str);
 			}
 		}
 	}
-	
+
 	HashMap<Player, Boolean> inventory = new HashMap<Player, Boolean>();
-	
+
 	@HookHandler
 	public void onInventory(InventoryHook hook) {
 		if (hook.isClosing()) {
-			inventory.put(hook.getPlayer(), false);
+			this.inventory.put(hook.getPlayer(), Boolean.valueOf(false));
 		} else {
-			inventory.put(hook.getPlayer(), true);
+			this.inventory.put(hook.getPlayer(), Boolean.valueOf(true));
 		}
 	}
-	
+
 	public int CountNearbyMobs(Player player) {
 		int count = 0;
 		List<EntityMob> mobs = player.getWorld().getMobList();
-		for (int i=0; i<mobs.size(); i++) {
-			Vector3D v = new Vector3D(mobs.get(i).getX(),mobs.get(i).getY(), mobs.get(i).getZ());
-			if (v.getDistance(player.getPosition()) <= 5) {
+		for (int i = 0; i < mobs.size(); i++) {
+			Vector3D v = new Vector3D(((EntityMob) mobs.get(i)).getX(),
+					((EntityMob) mobs.get(i)).getY(),
+					((EntityMob) mobs.get(i)).getZ());
+			if (v.getDistance(player.getPosition()) <= 5.0D) {
 				count++;
 			}
 		}
 		return count;
 	}
-	
+
 	HashMap<Player, Integer> ff = new HashMap<Player, Integer>();
-	
 	HashMap<Player, Long> hits = new HashMap<Player, Long>();
 	HashMap<Player, Integer> hitsanzahl = new HashMap<Player, Integer>();
-	
 	HashMap<Player, DamageType> lastDamageType = new HashMap<Player, DamageType>();
-	
+
 	@HookHandler
 	public void onDamage(DamageHook hook) {
-		if (hook.getAttacker() != null) {
-			if (hook.getAttacker().isPlayer()) {
-				Player player = (Player) hook.getAttacker();
-				if (inventory.containsKey(player)) {
-					if (inventory.get(player)) {
-						player.addPotionEffect(PotionEffectType.WEAKNESS, 20, 100);
-						player.message(Colors.RED + "You are hitting while an inventory is opened!");
-						castToAdmins(player, "[combat] Hitting while an inventory is opened");
-						hook.setCanceled();
-						if (!Forcefield.isEmpty()) {
-							if (Forcefield.contains(player)) {
-								if (ff.containsKey(player)) {
-									ff.put(player, ff.get(player) + 1);
-									if (ff.get(player) > 3) {
-										if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-											addToBan(player, 5);
-											player.kick(Colors.RED + "Disable your combat hacks or check your ping." + Colors.YELLOW + "\nYou have been banned for 10 minutes." + Colors.YELLOW + "\nThis has been recorded and saved.");
-											TempBans.put(player, System.currentTimeMillis()+10*60*1000);
-											TempReasons.put(player, "Combat Hacks");
-											String property = getProperty(player, "combat-hacks");
-											int num = 1;
-											if (property != null) {
-												if (isNumeric(property)) {
-													num = Integer.parseInt(property) + 1;
-												}
-											}
-											setProperty(player, "combat-hacks", num + "");
-										} else {
-											player.message(Colors.RED + "You would have been tempbanned for combat hacks.");	
-										}
-									}
-								} else {
-									ff.put(player, 0);
+		if ((hook.getAttacker() != null) && (hook.getAttacker().isPlayer())) {
+			Player player = (Player) hook.getAttacker();
+			if ((this.inventory.containsKey(player)) && (((Boolean) this.inventory.get(player)).booleanValue())) {
+				player.addPotionEffect(PotionEffectType.WEAKNESS, 20, 100);
+				player.message("§4You are hitting while an inventory is opened!");
+				castToAdmins(player, "[combat] Hitting while an inventory is opened");
+				hook.setCanceled();
+				if ((!Forcefield.isEmpty()) && (Forcefield.contains(player))) {
+					if (this.ff.containsKey(player)) {
+						this.ff.put(player, Integer.valueOf(((Integer) this.ff
+								.get(player)).intValue() + 1));
+						if (((Integer) this.ff.get(player)).intValue() > 3) {
+							if (!player
+									.hasPermission("nocheat.admin.exception")) {
+								addToBan(player, 5);
+								performAction(player, "combat");
+								String property = getProperty(player,
+										"combat-hacks");
+								int num = 1;
+								if ((property != null) && (isNumeric(property))) {
+									num = Integer.parseInt(property) + 1;
 								}
-							}
-						}
-					}
-				}
-			}	
-		}
-		if (hook.getDefender().isPlayer()) {
-			Player player = (Player) hook.getDefender();
-			lastDamageType.put(player, hook.getDamageSource().getDamagetype());
-			lastattack.put(player, System.currentTimeMillis());
-		}
-		if (hook.getDefender().isMob()) {
-			EntityMob mob = (EntityMob) hook.getDefender();
-			if (hook.getDamageSource() != null) {
-				if (hook.getDamageSource().getDamageDealer() != null) {
-					if (hook.getDamageSource().getDamageDealer().isPlayer()) {
-						Player player = (Player) hook.getDamageSource().getDamageDealer();
-						float maxrange = 5.7f;
-						Vector3D v = new Vector3D(player.getLocation());
-						double distance = v.getDistance(mob.getPosition());
-						if (distance > maxrange) {
-							if (hitsanzahl.containsKey(player)) {
-								hitsanzahl.put(player, hitsanzahl.get(player) + 10);
-								castToAdmins(player, "Range: " + Colors.RED + distance);
+								setProperty(player, "combat-hacks", num + "");
 							} else {
-								hitsanzahl.put(player, 0);
+								player.message("§4You would have been tempbanned for combat hacks.");
 							}
 						}
-						
-						if (hits.containsKey(player)) {
-							long diff = System.currentTimeMillis() - hits.get(player);
-							//player.message(diff + "");
-							if (diff < 148 && diff > 20) {
-								castToAdmins(player, "[combat] Damaging too fast: " + Colors.RED + diff);
-								if (hitsanzahl.containsKey(player)) {
-									hitsanzahl.put(player, hitsanzahl.get(player) + 5);
-									if (hitsanzahl.get(player) >= 25) {
-										hitsanzahl.put(player, 20);
-										if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-											addToBan(player, 5);
-											player.kick(Colors.RED + "Disable your combat hacks or check your ping." + Colors.YELLOW + "\nYou have been banned for 15 minutes." + Colors.YELLOW + "\nThis has been recorded and saved.");
-											TempBans.put(player, System.currentTimeMillis()+15*60*1000);
-											TempReasons.put(player, "Combat Hacks");
-											String property = getProperty(player, "combat-hacks");
-											int num = 1;
-											if (property != null) {
-												if (isNumeric(property)) {
-													num = Integer.parseInt(property) + 1;
-												}
-											}
-											setProperty(player, "combat-hacks", num + "");
-										} else {
-											player.message(Colors.RED + "You would have been tempbanned for combat hacks.");	
-										}
-									}
-								} else {
-									hitsanzahl.put(player, 1);
-								}
-							} else {
-								if (hitsanzahl.containsKey(player)) {
-									hitsanzahl.put(player, hitsanzahl.get(player) - 1);
-								}
-							}
-						}
-						hits.put(player, System.currentTimeMillis());
+					} else {
+						this.ff.put(player, Integer.valueOf(0));
 					}
 				}
 			}
+			if (hook.getDefender().getEntityType().equals(EntityType.ZOMBIE)) {
+				EntityMob mob = (EntityMob) hook.getDefender();
+				if (mob.hasDisplayName()) {
+					if (mob.getDisplayName().equals("n")) {
+						alert(player.getName() + ": Combat hacks detected, banning player.");
+						addToBan(player, 20);
+					}
+				}
+			}
+		}
+		if (hook.getDefender().getEntityType().equals(EntityType.ZOMBIE)) {
+			EntityMob mob = (EntityMob) hook.getDefender();
 			if (mob.hasDisplayName()) {
-				if (hook.getDamageSource().getDamageDealer() != null) {
-					if (hook.getDamageSource().getDamageDealer().isPlayer()) {
-						Player player = (Player) hook.getDamageSource().getDamageDealer();
-						if (mob.getDisplayName().equalsIgnoreCase(player.getName())) {
-							if (CountNearbyMobs(player) == 2) {
-								if (ff.containsKey(player)) {
-									ff.put(player, ff.get(player) + 1);
-									if (ff.get(player) > 3) {
-										if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-											player.kick(Colors.RED + "Disable your combat hacks or check your ping." + Colors.YELLOW + "\nYou have been banned for 10 minutes." + Colors.YELLOW + "\nThis has been recorded and saved.");
-											TempBans.put(player, System.currentTimeMillis()+10*60*1000);
-											TempReasons.put(player, "Combat Hacks");
-											String property = getProperty(player, "combat-hacks");
-											int num = 1;
-											if (property != null) {
-												if (isNumeric(property)) {
-													num = Integer.parseInt(property) + 1;
-												}
-											}
-											setProperty(player, "combat-hacks", num + "");
-										} else {
-											player.message(Colors.RED + "You would have been tempbanned for combat hacks.");	
-										}
+				if (mob.getDisplayName().equals("n")) {
+					hook.setCanceled();
+				}
+			}
+		}
+		if (hook.getDefender().isPlayer()) {
+			Player player = (Player) hook.getDefender();
+			this.lastDamageType.put(player, hook.getDamageSource()
+					.getDamagetype());
+			this.lastattack.put(player,
+					Long.valueOf(System.currentTimeMillis()));
+		}
+		if (hook.getDefender().isMob()) {
+			EntityMob mob = (EntityMob) hook.getDefender();
+			if ((hook.getDamageSource() != null)
+					&& (hook.getDamageSource().getDamageDealer() != null)
+					&& (hook.getDamageSource().getDamageDealer().isPlayer())) {
+				Player player = (Player) hook.getDamageSource()
+						.getDamageDealer();
+				float maxrange = 5.7F;
+				Vector3D v = new Vector3D(player.getLocation());
+				double distance = v.getDistance(mob.getPosition());
+				if (distance > maxrange) {
+					if (this.hitsanzahl.containsKey(player)) {
+						this.hitsanzahl.put(player,
+								Integer.valueOf(((Integer) this.hitsanzahl
+										.get(player)).intValue() + 10));
+						castToAdmins(player, "Range: §4" + distance);
+					} else {
+						this.hitsanzahl.put(player, Integer.valueOf(0));
+					}
+				}
+				if (this.hits.containsKey(player)) {
+					long diff = System.currentTimeMillis()
+							- ((Long) this.hits.get(player)).longValue();
+					if ((diff < 148L) && (diff > 20L)) {
+						castToAdmins(player, "[combat] Damaging too fast: §4"
+								+ diff);
+						if (this.hitsanzahl.containsKey(player)) {
+							this.hitsanzahl.put(player, Integer
+									.valueOf(((Integer) this.hitsanzahl
+											.get(player)).intValue() + 5));
+							if (((Integer) this.hitsanzahl.get(player))
+									.intValue() >= 25) {
+								this.hitsanzahl
+										.put(player, Integer.valueOf(20));
+								if (!player
+										.hasPermission("nocheat.admin.exception")) {
+									addToBan(player, 5);
+									performAction(player, "combat");
+									String property = getProperty(player,
+											"combat-hacks");
+									int num = 1;
+									if ((property != null)
+											&& (isNumeric(property))) {
+										num = Integer.parseInt(property) + 1;
 									}
+									setProperty(player, "combat-hacks", num + "");
 								} else {
-									ff.put(player, 0);
+									player.message("§4You would have been tempbanned for combat hacks.");
 								}
 							}
+						} else {
+							this.hitsanzahl.put(player, Integer.valueOf(1));
 						}
+					} else if (this.hitsanzahl.containsKey(player)) {
+						this.hitsanzahl.put(player,
+								Integer.valueOf(((Integer) this.hitsanzahl
+										.get(player)).intValue() - 1));
+					}
+				}
+				this.hits.put(player, Long.valueOf(System.currentTimeMillis()));
+			}
+			if ((mob.hasDisplayName())
+					&& (hook.getDamageSource().getDamageDealer() != null)
+					&& (hook.getDamageSource().getDamageDealer().isPlayer())) {
+				Player player = (Player) hook.getDamageSource()
+						.getDamageDealer();
+				if ((mob.getDisplayName().equalsIgnoreCase(player.getName()))
+						&& (CountNearbyMobs(player) == 2)) {
+					if (this.ff.containsKey(player)) {
+						this.ff.put(player, Integer.valueOf(((Integer) this.ff
+								.get(player)).intValue() + 1));
+						if (((Integer) this.ff.get(player)).intValue() > 3) {
+							if (!player
+									.hasPermission("nocheat.admin.exception")) {
+								performAction(player, "combat");
+								String property = getProperty(player,
+										"combat-hacks");
+								int num = 1;
+								if ((property != null) && (isNumeric(property))) {
+									num = Integer.parseInt(property) + 1;
+								}
+								setProperty(player, "combat-hacks", num + "");
+							} else {
+								player.message("§4You would have been tempbanned for combat hacks.");
+							}
+						}
+					} else {
+						this.ff.put(player, Integer.valueOf(0));
 					}
 				}
 			}
 		}
 	}
-	
+
 	HashMap<Player, Long> blocks = new HashMap<Player, Long>();
 	HashMap<Player, Integer> blocksamount = new HashMap<Player, Integer>();
 	static HashMap<Player, Integer> buffer = new HashMap<Player, Integer>();
-	
-	/*@HookHandler
-	public void onBlockLeftClick(BlockLeftClickHook hook) {
-		blocks.put(hook.getPlayer(), System.nanoTime());
-	}*/
-	
-	
+
 	@HookHandler
 	public void onBlockDestroy(BlockDestroyHook hook) {
 		World world = hook.getPlayer().getWorld();
 		Player player = hook.getPlayer();
-		if (!hook.getBlock().getType().equals(BlockType.TallGrass)) {
-			if (!FastBreak.isEmpty()) {
-				if (FastBreak.contains(world)) {
-					if (blocks.containsKey(hook.getPlayer())) {
-						long diff = System.currentTimeMillis() - blocks.get(hook.getPlayer());
-						if (!hook.getPlayer().getMode().equals(GameMode.CREATIVE)) {
-							//hook.getPlayer().message(diff + "");
-							int number = 80000;
-							if (player.getItemHeld() != null) {
-								int id = player.getItemHeld().getId();
-								if (id == 278) {
-									number = 300000;
-								}
-								if (id == 277) {
-									number = 300000;
-								}
-								if (id == 274) {
-									number = 160000;
-								}
-								if (id == 273) {
-									number = 100000;
-								}
-								if (id == 256) {
-									number = 120000;
-								}
-							}
-							if (diff > number) {
-								if (buffer.containsKey(player)) {
-									int num = buffer.get(player)+4;
-									buffer.put(player, num);
-									if (buffer.get(player) > 12) {
-										hook.setCanceled();
-										hook.getPlayer().message(Colors.RED + "FastBreak!!!");
-										hook.getPlayer().addPotionEffect(PotionEffectType.DIGSLOWDOWN, 30, 50);
-										if (blocksamount.containsKey(hook.getPlayer())) {
-											blocksamount.put(hook.getPlayer(), blocksamount.get(hook.getPlayer()) + 1);
-										} else {
-											blocksamount.put(hook.getPlayer(), 1);
-										}
-										buffer.put(player, 8);
-									}
-								} else {
-									buffer.put(player, 4);
-								}
-							}
-							if (buffer.containsKey(player)) {
-								int num = buffer.get(player) - 1;
-								if (num < 0) {
-									num = 0;
-								}
-								buffer.put(player, num);
-							}
-						}
+		if ((!hook.getBlock().getType().equals(BlockType.TallGrass))
+				&& (!FastBreak.isEmpty()) && (FastBreak.contains(world))
+				&& (this.blocks.containsKey(hook.getPlayer()))) {
+			long diff = System.currentTimeMillis()
+					- ((Long) this.blocks.get(hook.getPlayer())).longValue();
+			if (!hook.getPlayer().getMode().equals(GameMode.CREATIVE)) {
+				int number = 80000;
+				if (player.getItemHeld() != null) {
+					int id = player.getItemHeld().getId();
+					if (id == 278) {
+						number = 300000;
 					}
+					if (id == 277) {
+						number = 300000;
+					}
+					if (id == 274) {
+						number = 160000;
+					}
+					if (id == 273) {
+						number = 100000;
+					}
+					if (id == 256) {
+						number = 120000;
+					}
+				}
+				if (diff > number) {
+					if (buffer.containsKey(player)) {
+						int num = ((Integer) buffer.get(player)).intValue() + 4;
+						buffer.put(player, Integer.valueOf(num));
+						if (((Integer) buffer.get(player)).intValue() > 12) {
+							hook.setCanceled();
+							hook.getPlayer().message("§4FastBreak!!!");
+							hook.getPlayer().addPotionEffect(
+									PotionEffectType.DIGSLOWDOWN, 30, 50);
+							if (this.blocksamount.containsKey(hook.getPlayer())) {
+								this.blocksamount.put(hook.getPlayer(), Integer
+										.valueOf(((Integer) this.blocksamount
+												.get(hook.getPlayer()))
+												.intValue() + 1));
+							} else {
+								this.blocksamount.put(hook.getPlayer(),
+										Integer.valueOf(1));
+							}
+							buffer.put(player, Integer.valueOf(8));
+						}
+					} else {
+						buffer.put(player, Integer.valueOf(4));
+					}
+				}
+				if (buffer.containsKey(player)) {
+					int num = ((Integer) buffer.get(player)).intValue() - 1;
+					if (num < 0) {
+						num = 0;
+					}
+					buffer.put(player, Integer.valueOf(num));
 				}
 			}
 		}
-		if (!Nuker.isEmpty()) {
-			if (Nuker.contains(world)) {
-				if (blocks.containsKey(hook.getPlayer())) {
-					long diff = System.currentTimeMillis() - blocks.get(player);
-					if (diff < 2) {
-						hook.getPlayer().message(Colors.RED + "You break blocks too fast.");
-						castToAdmins(hook.getPlayer(), "[blocks] destroying blocks too fast. (" + diff + ")");
-						hook.setCanceled();
-						if (blocksamount.containsKey(hook.getPlayer())) {
-							blocksamount.put(hook.getPlayer(), blocksamount.get(hook.getPlayer()) + 1);
-						} else {
-							blocksamount.put(hook.getPlayer(), 1);
-						}
-					}
-				}
-			}
-		}
-		blocks.put(player, System.currentTimeMillis());
-		if (blocksamount.containsKey(hook.getPlayer())) {
-			if (blocksamount.get(hook.getPlayer()) > 5) {
-				if (!hook.getPlayer().hasPermission(PERMISSION_ADMIN + "exception")) {
-					hook.getPlayer().kick(Colors.RED + "Disable your hacks or check your ping." + Colors.YELLOW + "\nYou have been banned for 5 minutes." + Colors.RED + "\nThis has been recorded and saved.");
-					TempReasons.put(hook.getPlayer(), "Build Hacks");
-					TempBans.put(hook.getPlayer(), System.currentTimeMillis() + 5*60*1000);
-					blocksamount.put(hook.getPlayer(), 1);
-					String property = getProperty(hook.getPlayer(), "destroy-hacks");
-					int num = 1;
-					if (property != null) {
-						if (isNumeric(property)) {
-							num = Integer.parseInt(property) + 1;
-						}
-					}
-					setProperty(hook.getPlayer(), "destroy-hacks", num + "");
-					addToBan(hook.getPlayer(), 4);
+		if ((!Nuker.isEmpty()) && (Nuker.contains(world))
+				&& (this.blocks.containsKey(hook.getPlayer()))) {
+			long diff = System.currentTimeMillis()
+					- ((Long) this.blocks.get(player)).longValue();
+			if (diff < 2L) {
+				hook.getPlayer().message("§4You break blocks too fast.");
+				castToAdmins(hook.getPlayer(),
+						"[blocks] destroying blocks too fast. (" + diff + ")");
+				hook.setCanceled();
+				if (this.blocksamount.containsKey(hook.getPlayer())) {
+					this.blocksamount.put(hook.getPlayer(), Integer
+							.valueOf(((Integer) this.blocksamount.get(hook
+									.getPlayer())).intValue() + 1));
 				} else {
-					hook.getPlayer().message(Colors.RED + "You would have been banned for destroy hacks.");
-					blocksamount.put(hook.getPlayer(), 1);
+					this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
 				}
+			}
+		}
+		this.blocks.put(player, Long.valueOf(System.currentTimeMillis()));
+		if ((this.blocksamount.containsKey(hook.getPlayer()))
+				&& (((Integer) this.blocksamount.get(hook.getPlayer()))
+						.intValue() > 5)) {
+			if (!hook.getPlayer().hasPermission("nocheat.admin.exception")) {
+				performAction(player, "build");
+				this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
+				String property = getProperty(hook.getPlayer(), "destroy-hacks");
+				int num = 1;
+				if ((property != null) && (isNumeric(property))) {
+					num = Integer.parseInt(property) + 1;
+				}
+				setProperty(hook.getPlayer(), "destroy-hacks", num + "");
+				addToBan(hook.getPlayer(), 4);
+			} else {
+				hook.getPlayer().message(
+						"§4You would have been banned for destroy hacks.");
+				this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
 			}
 		}
 	}
-	
-	/*HashMap<Player, Long> slot = new HashMap<Player, Long>();
-	
-	@HookHandler
-	public void onSlotClick(SlotClickHook hook) {
-		Player player = hook.getPlayer();
-		if (hook.getItem() != null) {
-			//hook.getPlayer().message("SlotClickHook: " + hook.getItem().getDisplayName());
-			if (slot.containsKey(player)) {
-				long diff = System.nanoTime() - slot.get(player);
-				player.message(diff + ", " + hook.getButtonPress().toString());
-				if (diff < 50000000) {
-					if (!hook.getButtonPress().equals(ButtonPress.LEFT_PAINT_PROGRESS)) {
-						if (!hook.getButtonPress().equals(ButtonPress.RIGHT_PAINT_PROGRESS)) {
-							player.message(Colors.RED + "You clicked too fast!");
-							if (!player.hasPermission(PERMISSION_ADMIN)) {
-								hook.setCanceled();
-							}
-						}
-					}
-				}
-			}
-			slot.put(player, System.nanoTime());
-		}
-	}*/
 
-	
 	HashMap<Player, Long> swing = new HashMap<Player, Long>();
 	HashMap<Player, Long> beforediff = new HashMap<Player, Long>();
 	HashMap<Player, Integer> anzahl = new HashMap<Player, Integer>();
-	
+
 	@HookHandler
 	public void onPlayerArmSwing(PlayerArmSwingHook hook) {
 		Player player = hook.getPlayer();
 		if (!player.getMode().equals(GameMode.CREATIVE)) {
-			LineTracer lt = new LineTracer(player, 6, 1);
+			LineTracer lt = new LineTracer(player, 7, 0.02D);
 			Block target = lt.getTargetBlock();
-			if (swing.containsKey(player)) {
-				long diff = System.currentTimeMillis() - swing.get(player);
-				if (beforediff.containsKey(player)) {
-					long before = beforediff.get(player);
+			if (this.swing.containsKey(player)) {
+				long diff = System.currentTimeMillis()
+						- ((Long) this.swing.get(player)).longValue();
+				if (this.beforediff.containsKey(player)) {
+					long before = ((Long) this.beforediff.get(player))
+							.longValue();
 					long wholediff = Math.abs(diff - before);
-					if (!anzahl.containsKey(player)) {
-						anzahl.put(player, 0);
+					if (!this.anzahl.containsKey(player)) {
+						this.anzahl.put(player, Integer.valueOf(0));
 					}
-					if (diff < 20) { // Against lag
+					if (diff < 20L) {
 						return;
 					}
 					String strDiff;
-					if (diff <= 52) {
-						if (target == null) {
-							anzahl.put(player, anzahl.get(player) + 10);
+					Entity etarget = player.getTargetLookingAt();
+					if (diff <= 51L) {
+						int toadd = 8;
+						if (target != null && etarget == null) {
+							toadd = 0;
+						} else if (target != null && etarget != null) {
+							toadd = 9;
 						}
-						strDiff = Colors.RED + diff;
+						anzahl.put(player,	anzahl.get(player) + toadd);
+						strDiff = "§4" + diff;
 					} else {
-						strDiff = Colors.LIGHT_GREEN + diff;
+						strDiff = "§a" + diff;
 					}
 					String strWholediff;
-					if (wholediff <= 4) {
-						int toadd = 4;
+					//Entity etarget = player.getTargetLookingAt();
+					if (wholediff <= 4L) {
+						int toadd = 3;
 						if (target != null) {
 							toadd = 1;
 						}
-						anzahl.put(player, anzahl.get(player) + toadd);
-						strWholediff = Colors.RED + wholediff;
+						this.anzahl.put(
+								player,
+								Integer.valueOf(((Integer) this.anzahl
+										.get(player)).intValue() + toadd));
+						strWholediff = "§4" + wholediff;
 					} else {
 						int toremove = 2;
-						if (target != null) {
-							toremove = 15;
+						if (target != null && etarget == null) {
+							toremove = 10;
 						}
-						anzahl.put(player, anzahl.get(player) - toremove);
-						strWholediff = Colors.LIGHT_GREEN + wholediff;
+						this.anzahl.put(
+								player,
+								Integer.valueOf(((Integer) this.anzahl
+										.get(player)).intValue() - toremove));
+						strWholediff = "§a" + wholediff;
 					}
-					if (anzahl.get(player) < 0) {
-						anzahl.put(player, 0);
+					if (((Integer) this.anzahl.get(player)).intValue() < 0) {
+						this.anzahl.put(player, Integer.valueOf(0));
 					}
-					if (anzahl.containsKey(player)) {
-						if (anzahl.get(player) > 100) {
-							anzahl.remove(player);
-							if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-								addToBan(player, 5);
-								player.kick(Colors.RED + "You are hitting too fast." + Colors.YELLOW + "\nYou have been banned for 15 minutes." + Colors.RED + "\nThis has been recorded and saved.");
-								TempReasons.put(player, "Combat Hacks");
-								TempBans.put(player, System.currentTimeMillis() + 15*60*1000);
-							} else {
-								player.message(Colors.RED + "You would have been tempbanned for clicking too fast.");
-							}
-							String property = getProperty(player, "combat-hacks");
+					if (this.anzahl.containsKey(player)) {
+						if (((Integer) this.anzahl.get(player)).intValue() > 100) {
+							this.anzahl.remove(player);
+							performAction(player, "combat");
+
+							String property = getProperty(player,
+									"combat-hacks");
 							int num = 1;
-							if (property != null) {
-								if (isNumeric(property)) {
-									num = Integer.parseInt(property) + 1;
-								}
+							if ((property != null) && (isNumeric(property))) {
+								num = Integer.parseInt(property) + 1;
 							}
 							setProperty(player, "combat-hacks", num + "");
-							//player.addPotionEffect(PotionEffectType.WEAKNESS, 40, 40);
+							alert("§6" + player.getName() + "§c" + ": Combat hacks detected");
 						}
-						int num = anzahl.get(player);
+						if (!this.anzahl.containsKey(player)) {
+							return;
+						}
+						int num = ((Integer) this.anzahl.get(player))
+								.intValue();
 						String n;
 						if (num < 20) {
-							n = Colors.GREEN + num;
-						} else if (num < 40) {
-							n = Colors.YELLOW + num;
-						} else if (num < 60) {
-							n = Colors.ORANGE + num;
-						} else if (num < 80) {
-							n = Colors.LIGHT_RED + num;
+							n = "§2" + num;
 						} else {
-							n = Colors.RED + num;
-						}
-						castToAdmins(player, "[combat] " + Colors.LIGHT_GREEN + before + "/"+ strDiff + Colors.YELLOW + " > " + strWholediff + ", " + Colors.LIGHT_RED + "Danger level: " + Colors.ORANGE + n);
-					}
-				}
-				beforediff.put(player, diff);
-			}
-			swing.put(player, System.currentTimeMillis());
-		}
-	}
-	
-	/*@HookHandler
-	public void onDamage(DamageHook hook) {
-		Player player = null;
-		if (hook.getDefender().isPlayer()) {
-			player = (Player) hook.getDefender();
-		}
-		if (player != null) {
-			lastattack.put(player, System.currentTimeMillis());
-			/*if (!player.getMode().equals(GameMode.CREATIVE)) {
-				if (hits.containsKey(player)) {
-					long diff = System.currentTimeMillis() - hits.get(player);	
-					if (!hitsanzahl.containsKey(player)) {
-						hitsanzahl.put(player, 0);
-					}
-					if (diff <= 2) {
-						hitsanzahl.put(player, hitsanzahl.get(player) + 1);
-					}
-					//player.message("" + diff + ", " + Colors.ORANGE + hitsanzahl.get(player));
-					if (hitsanzahl.containsKey(player)) {
-						if (hitsanzahl.get(player) > 12) {
-							hitsanzahl.remove(player);
-							if (player.getGroup().getName().equalsIgnoreCase("players") || player.getGroup().getName().equalsIgnoreCase("visitors")) {
-								player.kick(Colors.RED + "Disable your forcefield or check your ping." + Colors.YELLOW + "\nYou have been banned for 15 minutes." + Colors.RED + "\nThis has been recorded and saved.");
-								TempReasons.put(player, "Combat Hacks");
-								TempBans.put(player, System.currentTimeMillis() + 15*60*1000);
+							if (num < 40) {
+								n = "§e" + num;
 							} else {
-								player.message(Colors.RED + "You would have been kicked for hitting too many mobs at once.");
-							}
-							String property = getProperty(player, "combat-hacks");
-							int num = 1;
-							if (property != null) {
-								if (isNumeric(property)) {
-									num = Integer.parseInt(property) + 1;
+								if (num < 60) {
+									n = "§6" + num;
+								} else {
+									if (num < 80) {
+										n = "§c" + num;
+									} else {
+										n = "§4" + num;
+									}
 								}
 							}
-							setProperty(player, "combat-hacks", num + "");
-							player.addPotionEffect(PotionEffectType.WEAKNESS, 40, 40);
 						}
+						castToAdmins(player, "[combat] §a" + before + "/"
+								+ strDiff + "§e" + " > " + strWholediff + ", "
+								+ "§c" + "Danger level: " + "§6" + n);
 					}
 				}
-				hits.put(player, System.currentTimeMillis());
+				this.beforediff.put(player, Long.valueOf(diff));
 			}
+			this.swing.put(player, Long.valueOf(System.currentTimeMillis()));
 		}
-	}*/
-	
+	}
+
 	HashMap<Player, Long> buildtime = new HashMap<Player, Long>();
 	HashMap<Player, Integer> buildhack = new HashMap<Player, Integer>();
 	HashMap<Player, Integer> buildbuffer = new HashMap<Player, Integer>();
-	
+
 	@HookHandler
 	public void onBlockPlace(BlockPlaceHook hook) {
 		World world = hook.getPlayer().getWorld();
-		if (!FastBuild.isEmpty()) {
-			if (FastBuild.contains(world)) {
-				Player player = hook.getPlayer();
-				if (!player.hasPermission(PERMISSION_ADMIN + "exception")) {
-					if (buildtime.containsKey(player)) {
-						long diff = System.currentTimeMillis() - buildtime.get(player);
-						if (buildbuffer.containsKey(player)) {
-							if (diff < 26) {
-								buildbuffer.put(player, buildbuffer.get(player) + 5);
-								if (buildbuffer.get(player) >= 20) {
-									buildbuffer.put(player, 14);
-									hook.setCanceled();
-									player.message(Colors.RED + "You are building too fast." + Colors.GREEN + "(" + diff + ")");
-								}
-							} else {
-								buildbuffer.put(player, buildbuffer.get(player) - 1);
-								if (buildbuffer.get(player) < 0) {
-									buildbuffer.put(player, 0);
-								}
+		if ((!FastBuild.isEmpty()) && (FastBuild.contains(world))) {
+			Player player = hook.getPlayer();
+			if (!player.hasPermission("nocheat.admin.exception")) {
+				if (this.buildtime.containsKey(player)) {
+					long diff = System.currentTimeMillis()
+							- ((Long) this.buildtime.get(player)).longValue();
+					if (this.buildbuffer.containsKey(player)) {
+						if (diff < 26L) {
+							this.buildbuffer.put(player, Integer
+									.valueOf(((Integer) this.buildbuffer
+											.get(player)).intValue() + 5));
+							if (((Integer) this.buildbuffer.get(player))
+									.intValue() >= 20) {
+								this.buildbuffer.put(player,
+										Integer.valueOf(14));
+								hook.setCanceled();
+								player.message("§4You are building too fast.§2("
+										+ diff + ")");
 							}
 						} else {
-							buildbuffer.put(player, 0);
-						}
-						if (diff <= 1) {
-							hook.setCanceled();
-							if (buildhack.containsKey(player)) {
-								buildhack.put(player, buildhack.get(player) + 1);
-								if (buildhack.get(player) > 15) {
-									player.kick(Colors.RED + "Disable your buildhacks or check your ping.\n\nThis has been recorded and saved.");
-									buildhack.remove(player);
-									String property = getProperty(hook.getPlayer(), "build-hacks");
-									int num = 1;
-									if (property != null) {
-										if (isNumeric(property)) {
-											num = Integer.parseInt(property) + 1;
-										}
-									}
-									setProperty(hook.getPlayer(), "build-hacks", num + "");
-								}
-							} else {
-								buildhack.put(player, 1);
+							this.buildbuffer.put(player, Integer
+									.valueOf(((Integer) this.buildbuffer
+											.get(player)).intValue() - 1));
+							if (((Integer) this.buildbuffer.get(player))
+									.intValue() < 0) {
+								this.buildbuffer
+										.put(player, Integer.valueOf(0));
 							}
 						}
+					} else {
+						this.buildbuffer.put(player, Integer.valueOf(0));
 					}
-					buildtime.put(player, System.currentTimeMillis());
+					if (diff <= 1L) {
+						hook.setCanceled();
+						if (this.buildhack.containsKey(player)) {
+							this.buildhack.put(player, Integer
+									.valueOf(((Integer) this.buildhack
+											.get(player)).intValue() + 1));
+							if (((Integer) this.buildhack.get(player))
+									.intValue() > 15) {
+								performAction(player, "build");
+								this.buildhack.remove(player);
+								String property = getProperty(hook.getPlayer(),
+										"build-hacks");
+								int num = 1;
+								if ((property != null) && (isNumeric(property))) {
+									num = Integer.parseInt(property) + 1;
+								}
+								setProperty(hook.getPlayer(), "build-hacks",
+										num + "");
+							}
+						} else {
+							this.buildhack.put(player, Integer.valueOf(1));
+						}
+					}
 				}
+				this.buildtime.put(player,
+						Long.valueOf(System.currentTimeMillis()));
 			}
 		}
 	}
-	
+
 	HashMap<Player, PotionEffect> lastPotion = new HashMap<Player, PotionEffect>();
-	
+
 	@HookHandler
 	public void onPotionEffectApplied(PotionEffectAppliedHook hook) {
 		if (hook.getEntity().isPlayer()) {
 			Player player = (Player) hook.getEntity();
-			lastPotion.put(player, hook.getPotionEffect());
-		} 
+			this.lastPotion.put(player, hook.getPotionEffect());
+		}
 	}
-	
-	HashMap<Player, Long> health = new HashMap<Player, Long>();
-	
+
+	HashMap<Player, Long> health = new HashMap<Player, Long> ();
+	HashMap<Player, Integer> healthamount = new HashMap<Player, Integer>();
+
 	@HookHandler
 	public void onHealthChange(HealthChangeHook hook) {
 		Player player = hook.getPlayer();
 		if (player.getHealth() > hook.getOldValue()) {
-			if (health.containsKey(player)) {
-				if (lastPotion.containsKey(player)) {
-					if (lastPotion.get(player).getName().endsWith("potion.heal")) {
-						lastPotion.remove(player);
-						return;
-					}
+			if (this.health.containsKey(player)) {
+				if ((this.lastPotion.containsKey(player))
+						&& (((PotionEffect) this.lastPotion.get(player))
+								.getName().endsWith("potion.heal"))) {
+					this.lastPotion.remove(player);
+					return;
 				}
 				if (!player.getAllActivePotionEffects().isEmpty()) {
-					for (int i=0; i<player.getAllActivePotionEffects().size(); i++) {
-						PotionEffect effect = player.getAllActivePotionEffects().get(i);
-						if (effect.getName().equalsIgnoreCase("potion.regeneration")) {
+					for (int i = 0; i < player.getAllActivePotionEffects()
+							.size(); i++) {
+						PotionEffect effect = (PotionEffect) player
+								.getAllActivePotionEffects().get(i);
+						if (effect.getName().equalsIgnoreCase(
+								"potion.regeneration")) {
 							return;
 						}
 					}
 				}
-				float diff = System.currentTimeMillis() - health.get(player);
+				float diff = (float) (System.currentTimeMillis() - ((Long) this.health
+						.get(player)).longValue());
 				float healthdiff = player.getHealth() - hook.getOldValue();
 				String str = "[health] ";
-				if (healthdiff <= 1 && healthdiff > 0.99) { // To prevent errors with the instant health potion
-					health.put(player, System.currentTimeMillis());
-					if (diff < 3500) {
-						addToBan(player, 2);
-						player.message(Colors.RED + "Your hp is regenerating too fast (" + diff + ")");
-						str = str.concat(Colors.RED + diff);
-						hook.setCanceled();
-					} else if (diff < 3850) {
-						str = str.concat(Colors.YELLOW + diff);
+				if ((healthdiff <= 1.0F) && (healthdiff > 0.99D)) {
+					this.health.put(player,
+							Long.valueOf(System.currentTimeMillis()));
+					int toadd = 0;
+					if (diff < 3200.0F) {
+						str = str.concat("§4" + diff);
+						toadd = 4;
+					} else if (diff < 3400.0F) {
+						str = str.concat("§c" + diff);
+						toadd = 3;
+					} else if (diff < 3600.0F) {
+						str = str.concat("§6" + diff);
+						toadd = 2;
+					} else if (diff < 3900.0F) {
+						str = str.concat("§e" + diff);
+						toadd = 1;
 					} else {
-						str = str.concat(Colors.GREEN + diff);
+						str = str.concat("§2" + diff);
+						toadd = -2;
+					}
+					if (this.healthamount.containsKey(player)) {
+						if (((Integer) this.healthamount.get(player))
+								.intValue() > 10) {
+							addToBan(player, 1);
+							player.message("§4Your hp is regenerating too fast ("
+									+ diff + ")");
+							hook.setCanceled();
+							this.health.remove(player);
+							this.healthamount.remove(player);
+							alert(player.getName() + ": Health regenerating too fast.");
+						} else {
+							this.healthamount.put(player, Integer
+									.valueOf(((Integer) this.healthamount
+											.get(player)).intValue() + toadd));
+							if (((Integer) this.healthamount.get(player))
+									.intValue() < 0) {
+								this.healthamount.put(player,
+										Integer.valueOf(0));
+							}
+							str = str.concat("("
+									+ this.healthamount.get(player) + ")");
+						}
+					} else {
+						this.healthamount.put(player, Integer.valueOf(toadd));
+						this.health.remove(player);
 					}
 				}
 				castToAdmins(player, str);
 			} else {
-				health.put(player, System.currentTimeMillis());
+				this.health.put(player,
+						Long.valueOf(System.currentTimeMillis()));
 			}
 		}
 	}
-	
+
+	@HookHandler
+	public void onEntityMove(EntityMoveHook hook) {
+		if (hook.getEntity().isMob()) {
+			EntityMob mob = (EntityMob) hook.getEntity();
+			if (mob.hasDisplayName()) {
+				if (mob.getDisplayName().equals("n")) {
+					mob.teleportTo(mob.getX(), mob.getY()+0.9, mob.getZ());
+					hook.setCanceled();
+				}
+			}
+		}
+	}
+
 	public void setProperty(Player player, String key, String value) {
-		try {		
-			File file = new File(DIR + PLAYERS + player.getName() + ".txt");
-			File dir = new File(DIR);
+		try {
+			File file = new File("config/nocheat/config/nocheat/players/" + player.getName() + ".txt");
+			File dir = new File("config/nocheat/");
 			if (!dir.exists()) {
 				dir.mkdir();
 			}
 			if (!file.exists()) {
 				file.createNewFile();
 			}
-			
-	        FileInputStream in = new FileInputStream("config/nocheat/" + player.getName() + ".txt");
-	        Properties props = new Properties();
-	        props.load(in);
-	        in.close();
-	        props.remove(key);
-	        FileOutputStream out = new FileOutputStream("config/nocheat/" + player.getName() + ".txt");   
-	        props.setProperty(key, value);
-	        props.store(out, null);
-	        out.close();
- 
+			FileInputStream in = new FileInputStream("config/nocheat/" + player.getName() + ".txt");
+			Properties props = new Properties();
+			props.load(in);
+			in.close();
+			props.remove(key);
+			FileOutputStream out = new FileOutputStream("config/nocheat/" + player.getName() + ".txt");
+			props.setProperty(key, value);
+			props.store(out, null);
+			out.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-	
+
 	public String getProperty(Player player, String key) {
-        FileInputStream in;
 		try {
-			in = new FileInputStream(DIR + PLAYERS + player.getName() + ".txt");
-	        Properties props = new Properties();
-	        props.load(in);
-	        String value = props.getProperty(key);
-	        in.close();
-	        return value;
+			FileInputStream in = new FileInputStream(
+					"config/nocheat/config/nocheat/players/" + player.getName()
+							+ ".txt");
+			Properties props = new Properties();
+			props.load(in);
+			String value = props.getProperty(key);
+			in.close();
+			return value;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
