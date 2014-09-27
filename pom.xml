@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  	<modelVersion>4.0.0</modelVersion>
+  	
+  	<name>NoCheat</name>
+  	<description>NoCheat for CanaryMod</description>
+  	<url>https://github.com/svdragster/NoCheat</url>
+  	<inceptionYear>2014</inceptionYear>
+  	
+  	<groupId>de.svdragster</groupId>
+  	<artifactId>nocheat</artifactId>
+  	<version>0.7</version>
+  	
+  	<issueManagement>
+  		<system>GitHub</system>
+  		<url>https://github.com/svdragster/NoCheat/issues</url>
+  	</issueManagement>
+  	
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+  	
+  	<repositories>
+		<repository>
+			<id>vi-repo</id>
+			<url>http://repo.visualillusionsent.net/repository/public</url>
+		</repository>
+	</repositories>
+  	
+	<dependencies>
+		<dependency>
+			<groupId>net.canarymod</groupId>
+			<artifactId>CanaryLib</artifactId>
+			<version>[1.0-RC-4-SNAPSHOT,)</version> <!-- Always at latest dev build -->
+			<scope>compile</scope>
+		</dependency>
+	</dependencies>
+</project>
