@@ -18,7 +18,6 @@ public class NoCheat extends Plugin {
 		try {
 			Canary.commands().registerCommands(new NoCheatCommands(), this, false);
 		} catch (CommandDependencyException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return true;
