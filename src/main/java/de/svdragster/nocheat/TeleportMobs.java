@@ -7,14 +7,13 @@ import net.canarymod.tasks.ServerTask;
 import net.canarymod.tasks.TaskOwner;
 
 public class TeleportMobs extends ServerTask {
-	Player player;
-	EntityMob mob;
+	private Player player;
+	private EntityMob mob;
 
-	public TeleportMobs(TaskOwner owner, long delay, Player _player,
-			EntityMob _mob) {
+	public TeleportMobs(TaskOwner owner, long delay, Player player, EntityMob mob) {
 		super(owner, delay);
-		this.player = _player;
-		this.mob = _mob;
+		this.player = player;
+		this.mob = mob;
 	}
 
 	public void run() {

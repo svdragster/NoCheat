@@ -6,14 +6,13 @@ import net.canarymod.tasks.ServerTask;
 import net.canarymod.tasks.TaskOwner;
 
 public class DestroyMobs extends ServerTask {
-	Player player;
-	EntityMob mob;
+	private Player player;
+	private EntityMob mob;
 
-	public DestroyMobs(TaskOwner owner, long delay, Player _player,
-			EntityMob _mob) {
+	public DestroyMobs(TaskOwner owner, long delay, Player player, EntityMob mob) {
 		super(owner, delay);
-		this.player = _player;
-		this.mob = _mob;
+		this.player = player;
+		this.mob = mob;
 	}
 
 	public void run() {
