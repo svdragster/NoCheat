@@ -42,6 +42,9 @@ public class NoCheatCommands implements CommandListener {
 					}
 				} else {
 					ArrayList<Player> admins = new ArrayList<Player>();
+					if (NoCheatListener.display.get(toWatch) != null && !NoCheatListener.display.get(toWatch).isEmpty()) {
+						admins.addAll(NoCheatListener.display.get(toWatch));
+					}
 					admins.add(admin);
 					NoCheatListener.display.put(toWatch, admins);
 					admin.message("Now watching " + parameters[1]);
