@@ -2,8 +2,6 @@ package de.svdragster.nocheat;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -11,10 +9,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Properties;
 
-import me.ekranos.canary.custommotd.IPDataAccess;
-import me.ekranos.canary.custommotd.PlayerMessages;
 import net.canarymod.Canary;
 import net.canarymod.LineTracer;
 import net.canarymod.api.DamageType;
@@ -27,6 +22,7 @@ import net.canarymod.api.entity.living.EntityLiving;
 import net.canarymod.api.entity.living.humanoid.Player;
 import net.canarymod.api.entity.living.monster.EntityMob;
 import net.canarymod.api.factory.EntityFactory;
+import net.canarymod.api.inventory.ItemType;
 import net.canarymod.api.potion.PotionEffect;
 import net.canarymod.api.potion.PotionEffectType;
 import net.canarymod.api.world.World;
@@ -37,8 +33,6 @@ import net.canarymod.api.world.position.Position;
 import net.canarymod.api.world.position.Vector3D;
 import net.canarymod.chat.Colors;
 import net.canarymod.chat.TextFormat;
-import net.canarymod.database.Database;
-import net.canarymod.database.exceptions.DatabaseReadException;
 import net.canarymod.hook.HookHandler;
 import net.canarymod.hook.entity.DamageHook;
 import net.canarymod.hook.entity.EntityMoveHook;
@@ -50,9 +44,9 @@ import net.canarymod.hook.player.ConnectionHook;
 import net.canarymod.hook.player.DisconnectionHook;
 import net.canarymod.hook.player.HealthChangeHook;
 import net.canarymod.hook.player.InventoryHook;
+import net.canarymod.hook.player.ItemUseHook;
 import net.canarymod.hook.player.PlayerArmSwingHook;
 import net.canarymod.hook.player.PlayerMoveHook;
-import net.canarymod.hook.system.ServerListPingHook;
 import net.canarymod.plugin.PluginListener;
 import net.visualillusionsent.utils.PropertiesFile;
 
@@ -641,7 +635,7 @@ public class NoCheatListener implements PluginListener {
 	 * @param ip
 	 * @return
 	 */
-	private String getUsernameForIP(String ip) {
+	/*private String getUsernameForIP(String ip) {
         IPDataAccess access = new IPDataAccess();
 
         HashMap<String, Object> filter = new HashMap<String, Object>();
@@ -658,7 +652,7 @@ public class NoCheatListener implements PluginListener {
         }
 
         return null;
-    }
+    }*/
 	
 	@HookHandler
 	public void onLogin(ConnectionHook hook) {
@@ -739,35 +733,28 @@ public class NoCheatListener implements PluginListener {
 
 	public void addToBan(Player player, int num) {
 		if (!player.hasPermission("nocheat.admin.exception")) {
-			if (this.ban.containsKey(player)) {
-				if (this.bantime.containsKey(player)) {
-					long diff = System.currentTimeMillis()
-							- this.bantime.get(player).longValue();
+			if (ban.containsKey(player)) {
+				if (bantime.containsKey(player)) {
+					long diff = System.currentTimeMillis() - bantime.get(player);
 					if (diff > 300000L) {
-						this.ban.remove(player);
-						this.bantime.remove(player);
+						ban.remove(player);
+						bantime.remove(player);
 						return;
 					}
 				}
-				int n = this.ban.get(player).intValue();
+				int n = ban.get(player).intValue();
 				int newnumber = n + num;
 				castToAdmins(player, "ban amount: " + newnumber);
-				if (newnumber > this.maxbans) {
+				if (newnumber > maxbans) {
 					tempban(player, "Hacked Client detected.", 60);
-					String property = getProperty(player, "hacks");
-					int tempnum = 1;
-					if ((property != null) && (isNumeric(property))) {
-						tempnum = Integer.parseInt(property) + 1;
-					}
-					setProperty(player, "hacks", tempnum + "");
-					this.ban.remove(player);
+					ban.remove(player);
 				} else {
-					this.ban.put(player, Integer.valueOf(newnumber));
+					ban.put(player, Integer.valueOf(newnumber));
 				}
 			} else {
-				this.ban.put(player, Integer.valueOf(num));
+				ban.put(player, Integer.valueOf(num));
 			}
-			this.bantime.put(player, Long.valueOf(System.currentTimeMillis()));
+			bantime.put(player, System.currentTimeMillis());
 		} else {
 			player.message("§4A ban would have been added (" + num + ")");
 		}
@@ -792,7 +779,7 @@ public class NoCheatListener implements PluginListener {
 		return false;
 	}*/
 	
-	/*public boolean isSurroundingAllowed(Player player) {
+	/*public boolean isSurroundingAllowed(Player player) { // This thing here doesn't really work well
 		Block block = player.getWorld().getBlockAt(
 				(int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1,
 				(int) player.getLocation().getBlockZ());
@@ -840,6 +827,7 @@ public class NoCheatListener implements PluginListener {
 	}
 	
 	HashMap<Player, Integer> fallen = new HashMap<Player, Integer>();
+	HashMap<Player, Integer> risen = new HashMap<Player, Integer>();
 	HashMap<Player, Integer> flying = new HashMap<Player, Integer>();
 	HashMap<Player, Integer> gliding = new HashMap<Player, Integer>();
 	public static HashMap<Player, Integer> jesus = new HashMap<Player, Integer>();
@@ -872,6 +860,8 @@ public class NoCheatListener implements PluginListener {
 				distance = 0.19D;
 			}
 			double result = difftime / distance;
+			double diffx = Math.abs(hook.getTo().getX() - hook.getFrom().getX());
+			double diffz = Math.abs(hook.getTo().getZ() - hook.getFrom().getZ());
 			List<PotionEffect> effects = new ArrayList<PotionEffect>();
 			effects.addAll(player.getAllActivePotionEffects());
 			if ((!Flying.isEmpty()) && (Flying.contains(worldname)) && !player.getMode().equals(GameMode.CREATIVE) && !player.getCapabilities().mayFly()) {
@@ -1058,8 +1048,6 @@ public class NoCheatListener implements PluginListener {
 						//jesus.remove(player);
 					}
 				}
-			}
-			if ((!player.getMode().equals(GameMode.CREATIVE)) && (!player.getCapabilities().mayFly()) && (!NoFall.isEmpty()) && (NoFall.contains(worldname))) {
 				if (negative && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air) && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 2, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {
 					if (fallen.containsKey(player)) {
 						fallen.put(player, fallen.get(player) + 1);
@@ -1067,13 +1055,20 @@ public class NoCheatListener implements PluginListener {
 						fallen.put(player, Integer.valueOf(1));
 					}
 				}
+				if (!negative && diffy > 0.15) {
+					if (risen.containsKey(player)) {
+						risen.put(player, risen.get(player) + 1);
+					} else {
+						risen.put(player, 1);
+					}
+				}
 				/**
 				 * Prevents people from flying back up when they were falling down first
 				 */
 				
-				if (fallen.containsKey(player)) {
-					if (fallen.get(player) >= 2) {
-						if (!negative && !player.isInWater() && !player.isInLava() && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air) && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 2, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {
+				if (fallen.containsKey(player) && risen.containsKey(player)) {
+					if (fallen.get(player) >= 2 && risen.get(player) >= 4) {
+						if (!negative && !player.isInWater() && !player.isOnGround() && !player.isInLava() && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air) && world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 2, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {
 							resetLocation(player);
 							castToAdmins(player, "[move] " + Colors.RED + "Flying up after falling down");
 						}
@@ -1095,10 +1090,11 @@ public class NoCheatListener implements PluginListener {
 						}
 					}
 				}
-				
+			}
 				/**
 				 * NoFall
 				 */
+			if ((!player.getMode().equals(GameMode.CREATIVE)) && (!player.getCapabilities().mayFly()) && (!NoFall.isEmpty()) && (NoFall.contains(worldname))) {
 				NoFallCheck:
 				if ((fallen.containsKey(player)) && (fallen.get(player).intValue() >= 5) && player.isOnGround() && !player.isInWater() && !player.isInWeb()) {//!world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {// && !world.getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 2, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {
 					for (int i=0; i<effects.size(); i++) {
@@ -1133,9 +1129,6 @@ public class NoCheatListener implements PluginListener {
 					fallen.put(player, 0);
 				}
 				//if (!player.getWorld().getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 1, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air) || !player.getWorld().getBlockAt((int) player.getLocation().getBlockX(), (int) player.getLocation().getBlockY() - 2, (int) player.getLocation().getBlockZ()).getType().equals(BlockType.Air)) {
-				if (player.isOnGround()) {
-					this.fallen.remove(player);
-				}
 			}
 			double maxjump = 0.54;
 			// Increases jump height by about [level]/8+.46 per level. (Jump height is ([level]+4.2)^2/16, ignoring drag). Taken from http://minecraft.gamepedia.com/Status_effect
@@ -1152,7 +1145,7 @@ public class NoCheatListener implements PluginListener {
 				blockMovement(hook);
 				castToAdmins(player, "§4(diffy) > " + maxjump);
 			}
-			String str = "[move]";
+			String str = "[move] ";
 			if (diffy < 0.5D) {
 				if ((player.isBlocking()) && (!NoSlowdown.isEmpty())
 						&& (NoSlowdown.contains(worldname)) && (!negative)
@@ -1196,25 +1189,58 @@ public class NoCheatListener implements PluginListener {
 					blockMovement(hook);
 				}
 			}
-			if ((diffy == 0) && (player.isSneaking()) && (!NoSlowdown.isEmpty()) && (NoSlowdown.contains(worldname)) && (result < 600.0D)) {
+			/*if ((diffy == 0) && (player.isSneaking()) && (!NoSlowdown.isEmpty()) && (NoSlowdown.contains(worldname)) && (result < 600.0D)) {
 				str = str.concat("§4 (sneak) " + result + " < 600");
 				if (player.getMode() != GameMode.CREATIVE) {
 					blockMovement(hook);
 				}
-			}
-			double number = 220;
+			}*/
+			double number = 420;
+			double diagonal = 0.2;
 			if (player.isSprinting()) {
-				number = number*0.45;
+				number = number*0.47;
+				diagonal = 0.27;
 			}
-			if (player.isInWater()) {
-				number = 1050;
-				if (diffy > 0.05) {
-					number = number * 1.1;
+			if (player.isInWater() || player.isInLava()) {
+				number = 3300;
+				if (diffy < 0.12) {
+					number = number * 0.9;
 				}
 			}
-			if (diffy > 0.075) {
-				number = number * 0.88;
+			if (player.isSneaking()) {
+				number = 1000;
+				if (diffy > 0.01) {
+					number = number * 0.1;
+				}
 			}
+			if (diffy >= 0.48) {
+				number = number * 0.5;
+			} else if (diffy >= 0.075) {
+				number = number * 0.9;
+			}
+			//player.message(Colors.PINK + diffx + ", " + diffz);
+			if (diffx < diagonal || diffz < diagonal && diffy < 0.7) { // This is a test, players moving diagonally detects them more often than when moving in a straight line
+				if (diffx > 0.03 && diffz > 0.03) {
+					double diagonalSmaller = diagonal*0.6;
+					if (diffx > diagonalSmaller && diffz > diagonalSmaller) {
+						number = number * 0.535;
+						str = str.concat(Colors.PINK + "Diagonal ");
+					} else {
+						number = number * 0.585;
+						str = str.concat(Colors.PURPLE + "Diagonal ");
+					}
+				}
+			}
+			if (diffx < 0.01 || diffz < 0.01) {
+				if (diffy == 0) {
+					if (player.isSprinting()) {
+						number = number * 1.1;
+					} else {
+						number = number * 1.32;
+					}
+				}
+			}
+			
 			for (int i=0; i<effects.size(); i++) {
 				PotionEffect effect = effects.get(i);
 				int id = effect.getPotionID();
@@ -1250,10 +1276,10 @@ public class NoCheatListener implements PluginListener {
 							double last = lastResult.get(player);
 							double resultDifference = Math.abs(result - last);
 							if (resultDifference <= 1.2) { // I noticed using the hack 'Blink' sometimes gives the last result number for a couple of times. For example: 300.1, 300.0, 7, 300.2, 300.1, 300.1, 9
-								walk.put(player, intlevel + 4);
+								walk.put(player, intlevel + 5);
 								str = str.concat(Colors.RED + " (blink) ");
 							} else if (resultDifference <= 2.2) {
-								walk.put(player, intlevel + 7);
+								walk.put(player, intlevel + 4);
 								str = str.concat(Colors.LIGHT_RED + " (blink) ");
 							}
 						}
@@ -1262,20 +1288,27 @@ public class NoCheatListener implements PluginListener {
 				} else {
 					walk.put(player, 0);
 				}
-				int lagBuffer = 35;
+				int lagBuffer = 30;
 				if ((result >= lagBuffer) && (result <= number)) { // Checks result being higher than lagBuffer to prevent false detection when it's lagging
 					if ((!negative)	&& (!hook.getPlayer().isBlocking()) && (hook.getPlayer().getMode() != GameMode.CREATIVE) && (!hook.getPlayer().getCapabilities().mayFly())) {
-						int toAdd = 4;
-						double smallerNumber = number*0.7;
-						double evenSmallerNumber = smallerNumber*0.5;
+						int toAdd = 3;
+						double smallNumber = number*0.76;
+						double smallerNumber = number*0.52;
+						double evenSmallerNumber = smallerNumber*0.3;
+						if (evenSmallerNumber <= lagBuffer) {
+							evenSmallerNumber = evenSmallerNumber*1.2;
+						}
 						if (result < evenSmallerNumber) {
 							toAdd = 10;
-							str = str.concat(Colors.RED + " (speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
+							str = str.concat(Colors.RED + "(speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
 						} else if (result < smallerNumber) {
 							toAdd = 6;
-							str = str.concat(Colors.LIGHT_RED + " (speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
+							str = str.concat(Colors.LIGHT_RED + "(speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
+						} else if (result < smallNumber) {
+							toAdd = 4;
+							str = str.concat(Colors.ORANGE + "(speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
 						} else {
-							str = str.concat(Colors.YELLOW + " (speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
+							str = str.concat(Colors.YELLOW + "(speed) " + result + " <= " + number + ", Danger level: " + color + intlevel);
 						}
 						walk.put(player, intlevel + toAdd);
 						if (intlevel > 50) {
@@ -1283,8 +1316,8 @@ public class NoCheatListener implements PluginListener {
 							performAction(player, "movement");
 							alert(player.getName() + ": " + Colors.RED + "Movement Hacks detected.");
 							walk.put(player, 15);
-						} else if (intlevel > 20) {
-							if (walk.get(player) > 20) { 
+						} else if (intlevel >= 23) {
+							if (walk.get(player) >= 23) { 
 								if (lastattack.containsKey(player)) {
 									if (getLastAttack(player) > 3000 && mobcount < 1) {
 										resetLocation(player);
@@ -1298,14 +1331,19 @@ public class NoCheatListener implements PluginListener {
 						}
 					}
 				} else if (walk.containsKey(player)) {
-					int num = walk.get(player) - 1;
+					int toRemove = 1;
+					if (result <= lagBuffer) { // To prevent false detection when lagging
+						toRemove = 5;
+						str = str.concat(Colors.YELLOW + "(lag?) ");
+					}
+					int num = walk.get(player) - toRemove;
 					if (num < 0) {
 						num = 0;
 					}
 					walk.put(player, num);
 				}
 				if (!str.contains("(speed)")) {
-					str = str.concat("§2 (speed) " + ((int) result) + " > " + ((int) number) +",            Danger level: " + color + intlevel);
+					str = str.concat("§2(speed) " + ((int) result) + " > " + ((int) number) +",            Danger level: " + color + intlevel);
 				}
 				if (!str.contains("(diffy)")) {
 					double tempDiffY = 0;
@@ -1325,6 +1363,7 @@ public class NoCheatListener implements PluginListener {
 			
 			if (!hook.isCanceled()) {
 				Block blockbelow = world.getBlockAt(player.getLocation().getBlockX(), player.getLocation().getBlockY()-1, player.getLocation().getBlockZ());
+				Block blockbelowbelow = world.getBlockAt(player.getLocation().getBlockX(), player.getLocation().getBlockY()-2, player.getLocation().getBlockZ());
 				if (player.isOnGround() && !blockbelow.getType().equals(BlockType.Water) && diffy < 0.26) {
 					if (jesus.containsKey(player)) {
 						jesus.remove(player);
@@ -1338,6 +1377,13 @@ public class NoCheatListener implements PluginListener {
 							lastLocation.put(player, player.getLocation());
 						}
 					}
+				}
+				if (player.isOnGround()) {
+					fallen.remove(player);
+					risen.remove(player);
+				} else if (diffy > 0.01 && (!blockbelow.isAir() || !blockbelowbelow.isAir())) {
+					//fallen.remove(player);
+					risen.remove(player);
 				}
 			}
 		}
@@ -1549,7 +1595,7 @@ public class NoCheatListener implements PluginListener {
 									}
 									setProperty(player, "combat-hacks", num + "");*/
 								} else {
-									player.message("§4Combat hacks detected (damage)");
+									player.message("§4Combat hacks detected (DamageHook)");
 								}
 							}
 						} else {
@@ -1559,7 +1605,7 @@ public class NoCheatListener implements PluginListener {
 						hitsanzahl.put(player, Integer.valueOf(hitsanzahl.get(player).intValue() - 1));
 					}
 				}
-				this.hits.put(player, Long.valueOf(System.currentTimeMillis()));
+				hits.put(player, Long.valueOf(System.currentTimeMillis()));
 			}
 			if ((mob.hasDisplayName())
 					&& (hook.getDamageSource().getDamageDealer() != null)
@@ -1568,134 +1614,251 @@ public class NoCheatListener implements PluginListener {
 						.getDamageDealer();
 				if ((mob.getDisplayName().equalsIgnoreCase(player.getName()))
 						&& (CountNearbyMobs(player) == 2)) {
-					if (this.ff.containsKey(player)) {
-						this.ff.put(player, Integer.valueOf(this.ff
-								.get(player).intValue() + 1));
-						if (this.ff.get(player).intValue() > 3) {
-							if (!player
-									.hasPermission("nocheat.admin.exception")) {
-								performAction(player, "combat");
-								String property = getProperty(player,
-										"combat-hacks");
-								int num = 1;
-								if ((property != null) && (isNumeric(property))) {
-									num = Integer.parseInt(property) + 1;
-								}
-								setProperty(player, "combat-hacks", num + "");
-							} else {
-								player.message("§4You would have been tempbanned for combat hacks.");
-							}
+					if (ff.containsKey(player)) {
+						ff.put(player, Integer.valueOf(ff.get(player) + 1));
+						if (ff.get(player).intValue() > 3) {
+							performAction(player, "combat");
 						}
 					} else {
-						this.ff.put(player, Integer.valueOf(0));
+						ff.put(player, Integer.valueOf(0));
 					}
 				}
 			}
 		}
 	}
 
+	public boolean forAxe(BlockType type) {
+		if (type.getId() == 17 || type.getId() == 5 || type.getId() == 162) { // log / planks / log2
+			if (type.getId() == 126 || type.getId() == 136 || type.getId() == 135 || type.getId() == 134 || type.getId() == 53 || type.getId() == 163 || type.getId() == 164) { // Wooden Slabs / stairs
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	public boolean forShovel(BlockType type) {
+		if (type.equals(BlockType.Dirt) || type.getId() == 3 || type.equals(BlockType.Gravel) || type.getId() == 12 || type.equals(BlockType.SoulSand) || type.equals(BlockType.Clay) || type.equals(BlockType.SnowBlock) || type.equals(BlockType.Mycelium)) {
+			return true;
+		}
+		return false;
+	}
+	
+	public boolean isGlass(BlockType type) {
+		if (type.equals(BlockType.Glass) || type.getId() == 95 || type.equals(BlockType.GlassPane) || type.getId() == 160 || type.equals(BlockType.GlowStone)) {
+			return true;
+		}
+		return false;
+	}
+	
+	public int getFastestBreakTime(BlockType type, ItemType item) {
+		int number = -1;
+		if (forAxe(type)) {
+			number = 3300;
+			if (item != null) {
+				if (item.equals(ItemType.WoodAxe)) {
+					number = 1700;
+				} else if (item.equals(ItemType.StoneAxe)) {
+					number = 1000;
+				} else if (item.equals(ItemType.IronAxe)) {
+					number = 770;
+				} else if (item.equals(ItemType.DiamondAxe)) {
+					number = 670;
+				} else if (item.equals(ItemType.GoldAxe)) {
+					number = 480;
+				}
+			}
+		} else if (forShovel(type)) {
+			number = 1000;
+			if (item != null) {
+				if (item.equals(ItemType.WoodSpade)) {
+					number = 648;
+				} else if (item.equals(ItemType.StoneSpade)) {
+					number = 440;
+				} else if (item.equals(ItemType.IronSpade)) {
+					number = 400;
+				} else if (item.equals(ItemType.DiamondSpade)) {
+					number = 370;
+				} else if (item.equals(ItemType.GoldSpade)) {
+					number = 348;
+				}
+			}
+		} else {
+			if (type.equals(BlockType.CoalOre)) {
+				number = 12100; 
+				if (item != null) {
+					if (item.equals(ItemType.WoodPickaxe)) {
+						number = 1940;
+					} else if (item.equals(ItemType.StonePickaxe)) {
+						number = 1090;
+					} else if (item.equals(ItemType.IronPickaxe)) {
+						number = 680;
+					} else if (item.equals(ItemType.DiamondPickaxe)) {
+						number = 640;
+					} else if (item.equals(ItemType.GoldPickaxe)) {
+						number = 490;
+					}
+				}
+			} else if (type.equals(BlockType.IronOre)) {
+				number = 11950; 
+				if (item != null) {
+					if (item.equals(ItemType.WoodPickaxe)) {
+						number = 6090;
+					} else if (item.equals(ItemType.StonePickaxe)) {
+						number = 1090;
+					} else if (item.equals(ItemType.IronPickaxe)) {
+						number = 720;
+					} else if (item.equals(ItemType.DiamondPickaxe)) {
+						number = 660;
+					} else if (item.equals(ItemType.GoldPickaxe)) {
+						number = 1130;
+					}
+				}
+			} else if (type.equals(BlockType.GoldOre)) {
+				number = 12100; 
+				if (item != null) {
+					if (item.equals(ItemType.WoodPickaxe)) {
+						number = 6090;
+					} else if (item.equals(ItemType.StonePickaxe)) {
+						number = 3190;
+					} else if (item.equals(ItemType.IronPickaxe)) {
+						number = 755;
+					} else if (item.equals(ItemType.DiamondPickaxe)) {
+						number = 640;
+					} else if (item.equals(ItemType.GoldPickaxe)) {
+						number = 1140;
+					}
+				}
+			} else if (type.equals(BlockType.Cobble)) {
+				number = 8190; 
+				if (item != null) {
+					if (item.equals(ItemType.WoodPickaxe)) {
+						number = 1330;
+					} else if (item.equals(ItemType.StonePickaxe)) {
+						number = 770;
+					} else if (item.equals(ItemType.IronPickaxe)) {
+						number = 580;
+					} else if (item.equals(ItemType.DiamondPickaxe)) {
+						number = 510;
+					} else if (item.equals(ItemType.GoldPickaxe)) {
+						number = 360;
+					}
+				}
+			} else if (type.equals(BlockType.Stone)) {
+				number = 6200; 
+				if (item != null) {
+					if (item.equals(ItemType.WoodPickaxe)) {
+						number = 1130;
+					} else if (item.equals(ItemType.StonePickaxe)) {
+						number = 670;
+					} else if (item.equals(ItemType.IronPickaxe)) {
+						number = 520;
+					} else if (item.equals(ItemType.DiamondPickaxe)) {
+						number = 425;
+					} else if (item.equals(ItemType.GoldPickaxe)) {
+						number = 360;
+					}
+				}
+			}
+			
+		}
+		return number;
+	}
+	
 	HashMap<Player, Long> blocks = new HashMap<Player, Long>();
 	HashMap<Player, Integer> blocksamount = new HashMap<Player, Integer>();
 	static HashMap<Player, Integer> buffer = new HashMap<Player, Integer>();
-
+	
 	@HookHandler
 	public void onBlockDestroy(BlockDestroyHook hook) {
 		String world = hook.getPlayer().getWorld().getName();
 		Player player = hook.getPlayer();
-		if ((!hook.getBlock().getType().equals(BlockType.TallGrass))
-				&& (!FastBreak.isEmpty()) && (FastBreak.contains(world))
-				&& (this.blocks.containsKey(hook.getPlayer()))) {
-			long diff = System.currentTimeMillis()
-					- this.blocks.get(hook.getPlayer()).longValue();
-			if (!hook.getPlayer().getMode().equals(GameMode.CREATIVE)) {
-				int number = 80000;
-				if (player.getItemHeld() != null) {
-					int id = player.getItemHeld().getId();
-					if (id == 278) {
-						number = 300000;
-					}
-					if (id == 277) {
-						number = 300000;
-					}
-					if (id == 274) {
-						number = 160000;
-					}
-					if (id == 273) {
-						number = 100000;
-					}
-					if (id == 256) {
-						number = 120000;
+		FastBreakDetection:
+		if ((!hook.getBlock().getType().equals(BlockType.TallGrass)) && (!FastBreak.isEmpty()) && (FastBreak.contains(world)) && (blocks.containsKey(player)) && !player.getMode().equals(GameMode.CREATIVE)) {
+			if (!player.getAllActivePotionEffects().isEmpty()) {
+				for (int i = 0; i < player.getAllActivePotionEffects().size(); i++) {
+					PotionEffect effect = player.getAllActivePotionEffects().get(i);
+					if (effect.getName().equalsIgnoreCase("potion.haste")) {
+						break FastBreakDetection;
 					}
 				}
-				if (diff > number) {
-					if (buffer.containsKey(player)) {
-						int num = buffer.get(player).intValue() + 4;
-						buffer.put(player, Integer.valueOf(num));
-						if (buffer.get(player).intValue() > 12) {
-							hook.setCanceled();
-							hook.getPlayer().message("§4FastBreak!!!");
-							hook.getPlayer().addPotionEffect(
-									PotionEffectType.DIGSLOWDOWN, 30, 50);
-							if (this.blocksamount.containsKey(hook.getPlayer())) {
-								this.blocksamount.put(hook.getPlayer(), Integer
-										.valueOf(this.blocksamount
-												.get(hook.getPlayer())
-												.intValue() + 1));
-							} else {
-								this.blocksamount.put(hook.getPlayer(),
-										Integer.valueOf(1));
-							}
-							buffer.put(player, Integer.valueOf(8));
-						}
-					} else {
-						buffer.put(player, Integer.valueOf(4));
-					}
-				}
+			}
+			long diff = System.currentTimeMillis() - blocks.get(hook.getPlayer());
+			ItemType item = null;
+			if (player.getItemHeld() != null) {
+				item = player.getItemHeld().getType();
+			}
+			int number = getFastestBreakTime(hook.getBlock().getType(), item);
+				/*if (id == 278) {
+					number = 20;
+				} else if (id == 277) {
+					number = 20;
+				} else if (id == 274) {
+					number = 20;
+				} else if (id == 273) { // Stone shovel
+					number = 440;
+				} else if (id == 256) { // Iron Shovel
+					number = 420;
+				}*/
+			if (diff < number && diff >= 120) {
 				if (buffer.containsKey(player)) {
-					int num = buffer.get(player).intValue() - 1;
+					int num = buffer.get(player).intValue() + 4;
+					castToAdmins(player, "[build] destroying blocks too fast. (" + diff + "), Danger Level: " + Colors.LIGHT_GRAY + num);
+					buffer.put(player, Integer.valueOf(num));
+					if (buffer.get(player).intValue() > 12) {
+						hook.setCanceled();
+						hook.getPlayer().message("§4FastBreak!!!");
+						hook.getPlayer().addPotionEffect(
+								PotionEffectType.DIGSLOWDOWN, 30, 50);
+						if (blocksamount.containsKey(hook.getPlayer())) {
+							blocksamount.put(hook.getPlayer(), blocksamount.get(hook.getPlayer()) + 1);
+						} else {
+							blocksamount.put(hook.getPlayer(),
+									1);
+						}
+						buffer.put(player, 8);
+					}
+				} else {
+					buffer.put(player, 4);
+				}
+			} else {
+				if (buffer.containsKey(player)) {
+					int current = buffer.get(player);
+					castToAdmins(player, "[build] " + Colors.GREEN + "Destroyed Block (" + diff + "), Danger Level: " + Colors.LIGHT_GRAY + current);
+					int num = current - 1;
 					if (num < 0) {
 						num = 0;
 					}
-					buffer.put(player, Integer.valueOf(num));
-				}
-			}
-		}
-		if ((!Nuker.isEmpty()) && (Nuker.contains(world))
-				&& (this.blocks.containsKey(hook.getPlayer()))) {
-			long diff = System.currentTimeMillis()
-					- this.blocks.get(player).longValue();
-			if (diff < 2L) {
-				hook.getPlayer().message("§4You break blocks too fast.");
-				castToAdmins(hook.getPlayer(),
-						"[blocks] destroying blocks too fast. (" + diff + ")");
-				hook.setCanceled();
-				if (this.blocksamount.containsKey(hook.getPlayer())) {
-					this.blocksamount.put(hook.getPlayer(), Integer
-							.valueOf(this.blocksamount.get(hook
-									.getPlayer()).intValue() + 1));
+					buffer.put(player, num);
 				} else {
-					this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
+					buffer.put(player, 0);
 				}
 			}
 		}
-		this.blocks.put(player, Long.valueOf(System.currentTimeMillis()));
-		if ((this.blocksamount.containsKey(hook.getPlayer()))
-				&& (this.blocksamount.get(hook.getPlayer())
+		if ((!Nuker.isEmpty()) && (Nuker.contains(world)) && (blocks.containsKey(player)) && (!hook.getBlock().getType().equals(BlockType.TallGrass))) {
+			long diff = System.currentTimeMillis() - blocks.get(player).longValue();
+			if (diff <= 1L) {
+				player.message("§4You break blocks too fast.");
+				castToAdmins(player, "[build] destroying blocks too fast. (" + diff + ")");
+				hook.setCanceled();
+				if (blocksamount.containsKey(hook.getPlayer())) {
+					blocksamount.put(hook.getPlayer(), blocksamount.get(hook.getPlayer()) + 1);
+				} else {
+					blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
+				}
+			}
+		}
+		blocks.put(player, System.currentTimeMillis());
+		if ((blocksamount.containsKey(hook.getPlayer()))
+				&& (blocksamount.get(hook.getPlayer())
 						.intValue() > 5)) {
 			if (!hook.getPlayer().hasPermission("nocheat.admin.exception")) {
 				performAction(player, "build");
-				this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
-				String property = getProperty(hook.getPlayer(), "destroy-hacks");
-				int num = 1;
-				if ((property != null) && (isNumeric(property))) {
-					num = Integer.parseInt(property) + 1;
-				}
-				setProperty(hook.getPlayer(), "destroy-hacks", num + "");
-				addToBan(hook.getPlayer(), 4);
+				blocksamount.put(hook.getPlayer(), 1);
+				addToBan(hook.getPlayer(), 1);
 			} else {
 				hook.getPlayer().message(
 						"§4You would have been banned for destroy hacks.");
-				this.blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
+				blocksamount.put(hook.getPlayer(), Integer.valueOf(1));
 			}
 		}
 	}
@@ -1765,14 +1928,6 @@ public class NoCheatListener implements PluginListener {
 						if (this.anzahl.get(player).intValue() > 100) {
 							this.anzahl.remove(player);
 							performAction(player, "combat");
-
-							String property = getProperty(player,
-									"combat-hacks");
-							int num = 1;
-							if ((property != null) && (isNumeric(property))) {
-								num = Integer.parseInt(property) + 1;
-							}
-							setProperty(player, "combat-hacks", num + "");
 							alert("§6" + player.getName() + "§c" + ": Combat hacks detected");
 						}
 						if (!this.anzahl.containsKey(player)) {
@@ -1814,67 +1969,55 @@ public class NoCheatListener implements PluginListener {
 	HashMap<Player, Integer> buildbuffer = new HashMap<Player, Integer>();
 
 	@HookHandler
+	public void onItemUse(ItemUseHook hook) {
+		castToAdmins(hook.getPlayer(), "[block] item use");
+	}
+	
+	@HookHandler
 	public void onBlockPlace(BlockPlaceHook hook) {
-		World world = hook.getPlayer().getWorld();
+		String world = hook.getPlayer().getWorld().getName();
 		if ((!FastBuild.isEmpty()) && (FastBuild.contains(world))) {
 			Player player = hook.getPlayer();
-			if (!player.hasPermission("nocheat.admin.exception")) {
-				if (this.buildtime.containsKey(player)) {
-					long diff = System.currentTimeMillis()
-							- this.buildtime.get(player).longValue();
-					if (this.buildbuffer.containsKey(player)) {
-						if (diff < 26L) {
-							this.buildbuffer.put(player, Integer
-									.valueOf(this.buildbuffer
-											.get(player).intValue() + 5));
-							if (this.buildbuffer.get(player)
-									.intValue() >= 20) {
-								this.buildbuffer.put(player,
-										Integer.valueOf(14));
-								hook.setCanceled();
-								player.message("§4You are building too fast.§2("
-										+ diff + ")");
-							}
-						} else {
-							this.buildbuffer.put(player, Integer
-									.valueOf(this.buildbuffer
-											.get(player).intValue() - 1));
-							if (this.buildbuffer.get(player)
-									.intValue() < 0) {
-								this.buildbuffer
-										.put(player, Integer.valueOf(0));
-							}
+			if (buildtime.containsKey(player)) {
+				long diff = System.currentTimeMillis()
+						- buildtime.get(player).longValue();
+				if (buildbuffer.containsKey(player)) {
+					if (diff < 26L) {
+						buildbuffer.put(player, Integer
+								.valueOf(buildbuffer
+										.get(player).intValue() + 5));
+						if (buildbuffer.get(player)
+								.intValue() >= 20) {
+							buildbuffer.put(player,
+									Integer.valueOf(14));
+							hook.setCanceled();
+							player.message("§4You are building too fast.§2(" + diff + ")");
+						}
+						castToAdmins(player, "[build] " + Colors.YELLOW + "Placing Blocks too fast (" + diff + "), Danger level: " + Colors.LIGHT_GRAY + buildbuffer.get(player));
+					} else {
+						buildbuffer.put(player, buildbuffer.get(player) - 1);
+						if (buildbuffer.get(player) < 0) {
+							buildbuffer.put(player, 0);
+						}
+						castToAdmins(player, "[build] " + Colors.LIGHT_GREEN + "Placing Block (" + diff + "), Danger level: " + Colors.LIGHT_GRAY + buildbuffer.get(player));
+					}
+				} else {
+					buildbuffer.put(player, Integer.valueOf(0));
+				}
+				if (diff <= 1L) {
+					hook.setCanceled();
+					if (buildhack.containsKey(player)) {
+						buildhack.put(player, buildhack.get(player) + 1);
+						if (buildhack.get(player) > 15) {
+							performAction(player, "build");
+							buildhack.remove(player);
 						}
 					} else {
-						this.buildbuffer.put(player, Integer.valueOf(0));
-					}
-					if (diff <= 1L) {
-						hook.setCanceled();
-						if (this.buildhack.containsKey(player)) {
-							this.buildhack.put(player, Integer
-									.valueOf(this.buildhack
-											.get(player).intValue() + 1));
-							if (this.buildhack.get(player)
-									.intValue() > 15) {
-								performAction(player, "build");
-								this.buildhack.remove(player);
-								String property = getProperty(hook.getPlayer(),
-										"build-hacks");
-								int num = 1;
-								if ((property != null) && (isNumeric(property))) {
-									num = Integer.parseInt(property) + 1;
-								}
-								setProperty(hook.getPlayer(), "build-hacks",
-										num + "");
-							}
-						} else {
-							this.buildhack.put(player, Integer.valueOf(1));
-						}
+						buildhack.put(player, 1);
 					}
 				}
-				this.buildtime.put(player,
-						Long.valueOf(System.currentTimeMillis()));
 			}
+			buildtime.put(player, Long.valueOf(System.currentTimeMillis()));
 		}
 	}
 
@@ -1985,14 +2128,14 @@ public class NoCheatListener implements PluginListener {
 		}
 	}
 
-	public void setProperty(Player player, String key, String value) {
+	/*public void setProperty(Player player, String key, String value) {
 		try {
-			File file = new File("config/nocheat/config/nocheat/players/" + player.getName() + ".txt");
+			//File file = new File("config/nocheat/config/nocheat/players/" + player.getName() + ".txt");
 			File dir = new File("config/nocheat/");
 			if (!dir.exists()) {
 				dir.mkdir();
 			}
-			if (!file.exists()) {
+			/*if (!file.exists()) {
 				file.createNewFile();
 			}
 			FileInputStream in = new FileInputStream("config/nocheat/" + player.getName() + ".txt");
@@ -2023,5 +2166,5 @@ public class NoCheatListener implements PluginListener {
 			e.printStackTrace();
 		}
 		return null;
-	}
+	}*/
 }
